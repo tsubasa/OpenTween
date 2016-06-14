@@ -3362,7 +3362,7 @@ namespace OpenTween
                 FavorareMenuItem.Enabled = true;
                 ShowRelatedStatusesMenuItem.Enabled = true;  //PublicSearchの時問題出るかも
 
-                if (_curPost.IsMe)
+                if (false)
                 {
                     ReTweetStripMenuItem.Enabled = false;  //公式RTは無効に
                     ReTweetUnofficialStripMenuItem.Enabled = true;
@@ -10072,7 +10072,7 @@ namespace OpenTween
                 }
                 else
                 {
-                    if (_curPost.IsDm || _curPost.IsMe)
+                    if (_curPost.IsDm)
                     {
                         _DoFavRetweetFlags = false;
                         return;
@@ -10093,7 +10093,7 @@ namespace OpenTween
                 foreach (int idx in _curList.SelectedIndices)
                 {
                     PostClass post = GetCurTabPost(idx);
-                    if (!post.IsMe && !post.IsProtect && !post.IsDm)
+                    if (!post.IsProtect && !post.IsDm)
                         statusIds.Add(post.StatusId);
                 }
 
@@ -10965,7 +10965,7 @@ namespace OpenTween
                 this.OpenFavotterOpMenuItem.Enabled = true;
                 this.ShowRelatedStatusesMenuItem2.Enabled = true;  //PublicSearchの時問題出るかも
 
-                if (_curPost.IsMe)
+                if (false)
                 {
                     this.RtOpMenuItem.Enabled = false;  //公式RTは無効に
                     this.RtUnOpMenuItem.Enabled = true;
