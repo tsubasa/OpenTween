@@ -89,7 +89,7 @@ namespace OpenTween.Connection
             return MaxFileSize;
         }
 
-        public async Task PostStatusAsync(string text, long? inReplyToStatusId, IMediaItem[] mediaItems)
+        public async Task PostStatusAsync(string text, long? inReplyToStatusId, IMediaItem[] mediaItems, long[] excludeReplyUserIds)
         {
             if (mediaItems == null)
                 throw new ArgumentNullException(nameof(mediaItems));
@@ -114,7 +114,7 @@ namespace OpenTween.Connection
 
             var textWithImageUrl = text + " " + imageUrlElm.Value.Trim();
 
-            await this.tw.PostStatus(textWithImageUrl, inReplyToStatusId)
+            await this.tw.PostStatus(textWithImageUrl, inReplyToStatusId, excludeReplyUserIds: excludeReplyUserIds)
                 .ConfigureAwait(false);
         }
 
