@@ -788,7 +788,7 @@ namespace OpenTween
             post.Source = string.Intern(source.Item1);
             post.SourceUri = source.Item2;
 
-            post.IsReply = post.ReplyToList.Contains(_uname);
+            post.IsReply = post.ReplyToList.Any(x => x.Item1 == this.UserId);
             post.IsExcludeReply = false;
 
             if (post.IsMe)
@@ -1478,7 +1478,7 @@ namespace OpenTween
             }
         }
 
-        public string CreateHtmlAnchor(string text, List<string> AtList, TwitterEntities entities, List<MediaInfo> media)
+        public string CreateHtmlAnchor(string text, List<Tuple<long, string>> AtList, TwitterEntities entities, List<MediaInfo> media)
         {
             if (entities != null)
             {
@@ -1493,9 +1493,7 @@ namespace OpenTween
                 {
                     foreach (var ent in entities.UserMentions)
                     {
-                        var screenName = ent.ScreenName.ToLowerInvariant();
-                        if (!AtList.Contains(screenName))
-                            AtList.Add(screenName);
+                        AtList.Add(Tuple.Create(ent.Id, ent.ScreenName));
                     }
                 }
                 if (entities.Media != null)
