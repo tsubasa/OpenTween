@@ -6116,12 +6116,12 @@ namespace OpenTween
                         if (_hisIdx < 0) _hisIdx = 0;
 
                         var historyItem = this._history[this._hisIdx];
-                        StatusText.Text = historyItem.status;
-                        StatusText.SelectionStart = StatusText.Text.Length;
                         if (historyItem.inReplyToId != null)
                             this.inReplyTo = Tuple.Create(historyItem.inReplyToId.Value, historyItem.inReplyToName);
                         else
                             this.inReplyTo = null;
+                        StatusText.Text = historyItem.status;
+                        StatusText.SelectionStart = StatusText.Text.Length;
                     }),
 
                 ShortcutCommand.Create(Keys.Control | Keys.Down)
@@ -6137,12 +6137,12 @@ namespace OpenTween
                         if (_hisIdx > _history.Count - 1) _hisIdx = _history.Count - 1;
 
                         var historyItem = this._history[this._hisIdx];
-                        StatusText.Text = historyItem.status;
-                        StatusText.SelectionStart = StatusText.Text.Length;
                         if (historyItem.inReplyToId != null)
                             this.inReplyTo = Tuple.Create(historyItem.inReplyToId.Value, historyItem.inReplyToName);
                         else
                             this.inReplyTo = null;
+                        StatusText.Text = historyItem.status;
+                        StatusText.SelectionStart = StatusText.Text.Length;
                     }),
 
                 ShortcutCommand.Create(Keys.Control | Keys.PageUp, Keys.Control | Keys.P)
@@ -7669,22 +7669,21 @@ namespace OpenTween
                     if ((_statuses.Tabs[ListTab.SelectedTab.Text].TabType == MyCommon.TabUsageType.DirectMessage && isAuto) || (!isAuto && !isReply))
                     {
                         // ダイレクトメッセージ
+                        this.inReplyTo = null;
                         StatusText.Text = "D " + _curPost.ScreenName + " " + StatusText.Text;
                         StatusText.SelectionStart = StatusText.Text.Length;
                         StatusText.Focus();
-                        this.inReplyTo = null;
                         return;
                     }
                     if (string.IsNullOrEmpty(StatusText.Text))
                     {
                         //空の場合
-
-                        // ステータステキストが入力されていない場合先頭に@ユーザー名を追加する
-                        StatusText.Text = "@" + _curPost.ScreenName + " ";
-
                         var inReplyToStatusId = this._curPost.RetweetedId ?? this._curPost.StatusId;
                         var inReplyToScreenName = this._curPost.ScreenName;
                         this.inReplyTo = Tuple.Create(inReplyToStatusId, inReplyToScreenName);
+
+                        // ステータステキストが入力されていない場合先頭に@ユーザー名を追加する
+                        StatusText.Text = "@" + _curPost.ScreenName + " ";
                     }
                     else
                     {
@@ -7710,25 +7709,25 @@ namespace OpenTween
                                 if (StatusText.Text.StartsWith(". ", StringComparison.Ordinal))
                                 {
                                     // 複数リプライ
-                                    StatusText.Text = StatusText.Text.Insert(2, "@" + _curPost.ScreenName + " ");
                                     this.inReplyTo = null;
+                                    StatusText.Text = StatusText.Text.Insert(2, "@" + _curPost.ScreenName + " ");
                                 }
                                 else
                                 {
                                     // 単独リプライ
-                                    StatusText.Text = "@" + _curPost.ScreenName + " " + StatusText.Text;
                                     var inReplyToStatusId = this._curPost.RetweetedId ?? this._curPost.StatusId;
                                     var inReplyToScreenName = this._curPost.ScreenName;
                                     this.inReplyTo = Tuple.Create(inReplyToStatusId, inReplyToScreenName);
+                                    StatusText.Text = "@" + _curPost.ScreenName + " " + StatusText.Text;
                                 }
                             }
                             else
                             {
                                 //文頭＠
                                 // 複数リプライ
+                                this.inReplyTo = null;
                                 StatusText.Text = ". @" + _curPost.ScreenName + " " + StatusText.Text;
                                 //StatusText.Text = "@" + _curPost.ScreenName + " " + StatusText.Text;
-                                this.inReplyTo = null;
                             }
                         }
                         else
@@ -7829,9 +7828,9 @@ namespace OpenTween
                             if (ids.Length == 0) return;
                             if (!StatusText.Text.StartsWith(". ", StringComparison.Ordinal))
                             {
+                                this.inReplyTo = null;
                                 StatusText.Text = ". " + StatusText.Text;
                                 sidx += 2;
-                                this.inReplyTo = null;
                             }
                             if (sidx > 0)
                             {
@@ -7892,13 +7891,13 @@ namespace OpenTween
                             if (string.IsNullOrEmpty(StatusText.Text))
                             {
                                 //未入力の場合のみ返信先付加
-                                StatusText.Text = ids;
-                                StatusText.SelectionStart = ids.Length;
-                                StatusText.Focus();
-
                                 var inReplyToStatusId = this._curPost.RetweetedId ?? this._curPost.StatusId;
                                 var inReplyToScreenName = this._curPost.ScreenName;
                                 this.inReplyTo = Tuple.Create(inReplyToStatusId, inReplyToScreenName);
+
+                                StatusText.Text = ids;
+                                StatusText.SelectionStart = ids.Length;
+                                StatusText.Focus();
                                 return;
                             }
 
@@ -10645,9 +10644,9 @@ namespace OpenTween
                     return;
                 }
 
-                StatusText.Text = " " + MyCommon.GetStatusUrl(_curPost);
-
                 this.inReplyTo = null;
+
+                StatusText.Text = " " + MyCommon.GetStatusUrl(_curPost);
 
                 StatusText.SelectionStart = 0;
                 StatusText.Focus();
@@ -10670,12 +10669,12 @@ namespace OpenTween
                 string rtdata = _curPost.Text;
                 rtdata = CreateRetweetUnofficial(rtdata, this.StatusText.Multiline);
 
-                StatusText.Text = " RT @" + _curPost.ScreenName + ": " + rtdata;
-
                 // 投稿時に in_reply_to_status_id を付加する
                 var inReplyToStatusId = this._curPost.RetweetedId ?? this._curPost.StatusId;
                 var inReplyToScreenName = this._curPost.ScreenName;
                 this.inReplyTo = Tuple.Create(inReplyToStatusId, inReplyToScreenName);
+
+                StatusText.Text = " RT @" + _curPost.ScreenName + ": " + rtdata;
 
                 StatusText.SelectionStart = 0;
                 StatusText.Focus();
