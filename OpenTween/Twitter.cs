@@ -275,7 +275,7 @@ namespace OpenTween
         }
 
         public async Task PostStatus(string postStr, long? reply_to, IReadOnlyList<long> mediaIds = null,
-            IReadOnlyList<long> excludeReplyUserIds = null)
+            IReadOnlyList<long> excludeReplyUserIds = null, string attachmentUrl = null)
         {
             this.CheckAccountState();
 
@@ -292,7 +292,7 @@ namespace OpenTween
                 autoPopulateReplyMetadata = true;
 
             var response = await this.Api.StatusesUpdate(postStr, reply_to, mediaIds,
-                    autoPopulateReplyMetadata, excludeReplyUserIds)
+                    autoPopulateReplyMetadata, excludeReplyUserIds, attachmentUrl)
                 .ConfigureAwait(false);
 
             var status = await response.LoadJsonAsync()
