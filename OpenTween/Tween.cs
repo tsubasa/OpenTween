@@ -2130,8 +2130,11 @@ namespace OpenTween
             CheckReplyTo(StatusText.Text);
 
             long[] autoPopulatedUserIds;
-
             var statusText = this.RemoveAutoPopuratedMentions(this.StatusText.Text, out autoPopulatedUserIds);
+
+            string attachmentUrl;
+            statusText = this.RemoveAttachmentUrl(statusText, out attachmentUrl);
+
             statusText = this.FormatStatusText(statusText);
 
             if (this.GetRestStatusCount(statusText) < 0)
@@ -2155,6 +2158,8 @@ namespace OpenTween
                 status.excludeReplyUserIds = replyToPost.ReplyToList.Select(x => x.Item1).Except(autoPopulatedUserIds)
                     .ToArray();
             }
+
+            status.attachmentUrl = attachmentUrl;
 
             if (ImageSelector.Visible)
             {
@@ -4770,6 +4775,27 @@ namespace OpenTween
         }
 
         /// <summary>
+        /// attachment_url に指定可能な URL が含まれていれば除去
+        /// </summary>
+        private string RemoveAttachmentUrl(string statusText, out string attachmentUrl)
+        {
+            var match = Twitter.AttachmentUrlRegex.Match(statusText);
+            if (!match.Success)
+            {
+                attachmentUrl = null;
+                return statusText;
+            }
+
+            attachmentUrl = match.Value;
+
+            // マッチした URL を空白に置換
+            statusText = statusText.Substring(0, match.Index);
+
+            // テキストと URL の間にスペースが含まれていれば除去
+            return statusText.TrimEnd(' ');
+        }
+
+        /// <summary>
         /// ツイート投稿前のフッター付与などの前処理を行います
         /// </summary>
         private string FormatStatusText(string statusText)
@@ -4859,6 +4885,9 @@ namespace OpenTween
         {
             long[] autoPopulatedUserIds;
             statusText = this.RemoveAutoPopuratedMentions(statusText, out autoPopulatedUserIds);
+
+            string attachmentUrl;
+            statusText = this.RemoveAttachmentUrl(statusText, out attachmentUrl);
 
             statusText = this.FormatStatusText(statusText);
 
