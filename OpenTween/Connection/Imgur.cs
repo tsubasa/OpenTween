@@ -95,8 +95,7 @@ namespace OpenTween.Connection
             return MaxFileSize;
         }
 
-        public async Task PostStatusAsync(string text, long? inReplyToStatusId, IMediaItem[] mediaItems,
-            long[] excludeReplyUserIds, string attachmentUrl)
+        public async Task<PostStatusParams> UploadAsync(IMediaItem[] mediaItems, PostStatusParams postParams)
         {
             if (mediaItems == null)
                 throw new ArgumentNullException(nameof(mediaItems));
@@ -115,7 +114,7 @@ namespace OpenTween.Connection
             XDocument xml;
             try
             {
-                xml = await this.UploadFileAsync(item, text)
+                xml = await this.UploadFileAsync(item, postParams.Text)
                     .ConfigureAwait(false);
             }
             catch (HttpRequestException ex)
@@ -134,10 +133,9 @@ namespace OpenTween.Connection
 
             var imageUrl = imageElm.Element("link").Value;
 
-            var textWithImageUrl = text + " " + imageUrl.Trim();
+            postParams.Text += " " + imageUrl.Trim();
 
-            await this.twitter.PostStatus(textWithImageUrl, inReplyToStatusId, excludeReplyUserIds: excludeReplyUserIds, attachmentUrl: attachmentUrl)
-                .ConfigureAwait(false);
+            return postParams;
         }
 
         public int GetReservedTextLength(int mediaCount)
