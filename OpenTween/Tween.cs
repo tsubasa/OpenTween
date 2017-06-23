@@ -5083,7 +5083,7 @@ namespace OpenTween
                         using (Font fnt = new Font(e.Item.Font, FontStyle.Bold))
                         {
                             TextRenderer.DrawText(e.Graphics,
-                                                    post.IsDeleted ? "(DELETED)" : post.TextSingleLine,
+                                                    post.IsDeleted ? "(DELETED)" + post.TextSingleLine : post.TextSingleLine,
                                                     e.Item.Font,
                                                     Rectangle.Round(rct),
                                                     color,
@@ -5108,7 +5108,7 @@ namespace OpenTween
                         if (e.ColumnIndex != 2)
                             text = e.SubItem.Text;
                         else
-                            text = post.IsDeleted ? "(DELETED)" : post.TextSingleLine;
+                            text = post.IsDeleted ? "(DELETED)" + post.TextSingleLine : post.TextSingleLine;
 
                         if (drawLineCount == 1)
                         {
