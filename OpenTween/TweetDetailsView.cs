@@ -124,7 +124,7 @@ namespace OpenTween
 
                 loadTasks.Add(this.SetUserPictureAsync(post.ImageUrl));
 
-                DateTimeLabel.Text = post.CreatedAt.ToString();
+                DateTimeLabel.Text = post.CreatedAt.ToLocalTimeString();
             }
 
             if (this.DumpPostClass)
@@ -148,7 +148,7 @@ namespace OpenTween
                 sb.AppendFormat("IsRead         : {0}<br>", post.IsRead);
                 sb.AppendFormat("IsReply        : {0}<br>", post.IsReply);
 
-                foreach (string nm in post.ReplyToList)
+                foreach (string nm in post.ReplyToList.Select(x => x.ScreenName))
                 {
                     sb.AppendFormat("ReplyToList    : {0}<br>", nm);
                 }
@@ -157,7 +157,7 @@ namespace OpenTween
                 sb.AppendFormat("NickName       : {0}<br>", post.Nickname);
                 sb.AppendFormat("Text   : {0}<br>", post.Text);
                 sb.AppendFormat("(PlainText)    : <xmp>{0}</xmp><br>", post.Text);
-                sb.AppendFormat("CreatedAt          : {0}<br>", post.CreatedAt);
+                sb.AppendFormat("CreatedAt          : {0}<br>", post.CreatedAt.ToLocalTimeString());
                 sb.AppendFormat("Source         : {0}<br>", post.Source);
                 sb.AppendFormat("UserId            : {0}<br>", post.UserId);
                 sb.AppendFormat("FilterHit      : {0}<br>", post.FilterHit);
@@ -330,7 +330,7 @@ namespace OpenTween
             var innerHtml = "<p>" + StripLinkTagHtml(post.Text) + "</p>" +
                 " &mdash; " + WebUtility.HtmlEncode(post.Nickname) +
                 " (@" + WebUtility.HtmlEncode(post.ScreenName) + ") " +
-                WebUtility.HtmlEncode(post.CreatedAt.ToString());
+                WebUtility.HtmlEncode(post.CreatedAt.ToLocalTimeString());
 
             return FormatQuoteTweetHtml(post.StatusId, innerHtml, isReply);
         }
@@ -351,10 +351,7 @@ namespace OpenTween
         /// 指定されたHTMLからリンクを除去します
         /// </summary>
         internal static string StripLinkTagHtml(string html)
-        {
-            // a 要素はネストされていない前提の正規表現パターン
-            return Regex.Replace(html, @"<a[^>]*>(.*?)</a>", "$1");
-        }
+            => Regex.Replace(html, @"<a[^>]*>(.*?)</a>", "$1"); // a 要素はネストされていない前提の正規表現パターン
 
         public async Task DoTranslation()
         {
@@ -417,9 +414,7 @@ namespace OpenTween
         }
 
         protected void RaiseStatusChanged(string statusText)
-        {
-            this.StatusChanged?.Invoke(this, new TweetDetailsViewStatusChengedEventArgs(statusText));
-        }
+            => this.StatusChanged?.Invoke(this, new TweetDetailsViewStatusChengedEventArgs(statusText));
 
         private void TweetDetailsView_FontChanged(object sender, EventArgs e)
         {
@@ -439,14 +434,10 @@ namespace OpenTween
         }
 
         private void UserPicture_MouseEnter(object sender, EventArgs e)
-        {
-            this.UserPicture.Cursor = Cursors.Hand;
-        }
+            => this.UserPicture.Cursor = Cursors.Hand;
 
         private void UserPicture_MouseLeave(object sender, EventArgs e)
-        {
-            this.UserPicture.Cursor = Cursors.Default;
-        }
+            => this.UserPicture.Cursor = Cursors.Default;
 
         private async void PostBrowser_Navigated(object sender, WebBrowserNavigatedEventArgs e)
         {
@@ -473,8 +464,7 @@ namespace OpenTween
 
         private async void PostBrowser_PreviewKeyDown(object sender, PreviewKeyDownEventArgs e)
         {
-            Task asyncTask;
-            bool KeyRes = this.Owner.CommonKeyDown(e.KeyData, FocusedControl.PostBrowser, out asyncTask);
+            var KeyRes = this.Owner.CommonKeyDown(e.KeyData, FocusedControl.PostBrowser, out var asyncTask);
             if (KeyRes)
             {
                 e.IsInputKey = true;
@@ -542,9 +532,7 @@ namespace OpenTween
         }
 
         private void SourceLinkLabel_MouseLeave(object sender, EventArgs e)
-        {
-            this.RaiseStatusChanged(statusText: "");
-        }
+            => this.RaiseStatusChanged(statusText: "");
 
         #endregion
 
@@ -684,12 +672,12 @@ namespace OpenTween
             await this.Owner.ShowUserStatus(this.CurrentPost.ScreenName, false);
         }
 
-        private void SearchPostsDetailNameToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void SearchPostsDetailNameToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (this.CurrentPost == null)
                 return;
 
-            this.Owner.AddNewTabForUserTimeline(this.CurrentPost.ScreenName);
+            await this.Owner.AddNewTabForUserTimeline(this.CurrentPost.ScreenName);
         }
 
         private void SearchAtPostsDetailNameToolStripMenuItem_Click(object sender, EventArgs e)
@@ -823,7 +811,7 @@ namespace OpenTween
             bool fAllFlag = false;
             foreach (Match mu in ma)
             {
-                if (mu.Result("${ScreenName}").ToLowerInvariant() != this.Owner.TwitterInstance.Username.ToLowerInvariant())
+                if (!mu.Result("${ScreenName}").Equals(this.Owner.TwitterInstance.Username, StringComparison.InvariantCultureIgnoreCase))
                 {
                     fAllFlag = true;
                     break;
@@ -840,19 +828,13 @@ namespace OpenTween
         }
 
         private async void SearchGoogleContextMenuItem_Click(object sender, EventArgs e)
-        {
-            await this.DoSearchToolStrip(Properties.Resources.SearchItem2Url);
-        }
+            => await this.DoSearchToolStrip(Properties.Resources.SearchItem2Url);
 
         private async void SearchWikipediaContextMenuItem_Click(object sender, EventArgs e)
-        {
-            await this.DoSearchToolStrip(Properties.Resources.SearchItem1Url);
-        }
+            => await this.DoSearchToolStrip(Properties.Resources.SearchItem1Url);
 
         private async void SearchPublicSearchContextMenuItem_Click(object sender, EventArgs e)
-        {
-            await this.DoSearchToolStrip(Properties.Resources.SearchItem4Url);
-        }
+            => await this.DoSearchToolStrip(Properties.Resources.SearchItem4Url);
 
         private void CurrentTabToolStripMenuItem_Click(object sender, EventArgs e)
         {
@@ -918,10 +900,7 @@ namespace OpenTween
         }
 
         private void SelectionAllContextMenuItem_Click(object sender, EventArgs e)
-        {
-            //発言詳細ですべて選択
-            PostBrowser.Document.ExecCommand("SelectAll", false, null);
-        }
+            => this.PostBrowser.Document.ExecCommand("SelectAll", false, null); // 発言詳細ですべて選択
 
         private async void FollowContextMenuItem_Click(object sender, EventArgs e)
         {
@@ -950,7 +929,7 @@ namespace OpenTween
             List<string> ids = new List<string>();
             foreach (Match mu in ma)
             {
-                if (mu.Result("${ScreenName}").ToLower() != this.Owner.TwitterInstance.Username.ToLower())
+                if (!mu.Result("${ScreenName}").Equals(this.Owner.TwitterInstance.Username, StringComparison.InvariantCultureIgnoreCase))
                 {
                     ids.Add(mu.Result("${ScreenName}"));
                 }
@@ -966,10 +945,11 @@ namespace OpenTween
                 await this.Owner.ShowUserStatus(name);
         }
 
-        private void SearchPostsDetailToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void SearchPostsDetailToolStripMenuItem_Click(object sender, EventArgs e)
         {
             string name = GetUserId();
-            if (name != null) this.Owner.AddNewTabForUserTimeline(name);
+            if (name != null)
+                await this.Owner.AddNewTabForUserTimeline(name);
         }
 
         private void SearchAtPostsDetailToolStripMenuItem_Click(object sender, EventArgs e)
@@ -1021,9 +1001,7 @@ namespace OpenTween
         }
 
         private async void TranslationToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            await this.DoTranslation();
-        }
+            => await this.DoTranslation();
 
         #endregion
 
@@ -1086,8 +1064,6 @@ namespace OpenTween
         public string StatusText { get; }
 
         public TweetDetailsViewStatusChengedEventArgs(string statusText)
-        {
-            this.StatusText = statusText;
-        }
+            => this.StatusText = statusText;
     }
 }

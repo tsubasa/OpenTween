@@ -54,9 +54,7 @@ namespace OpenTween
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string ServiceName
-        {
-            get { return ImageServiceCombo.Text; }
-        }
+            => this.ImageServiceCombo.Text;
 
         /// <summary>
         /// 選択されている投稿先を示すインデックスを取得する。
@@ -64,9 +62,7 @@ namespace OpenTween
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int ServiceIndex
-        {
-            get { return ImageServiceCombo.SelectedIndex; }
-        }
+            => this.ImageServiceCombo.SelectedIndex;
 
         /// <summary>
         /// 選択されている投稿先の IMediaUploadService を取得する。
@@ -99,9 +95,7 @@ namespace OpenTween
         /// 利用可能な全ての IMediaUploadService インスタンスを取得する。
         /// </summary>
         public ICollection<IMediaUploadService> GetServices()
-        {
-            return this.pictureService.Values;
-        }
+            => this.pictureService.Values;
 
         private class SelectedMedia
         {
@@ -122,27 +116,15 @@ namespace OpenTween
             }
 
             public bool IsValid
-            {
-                get
-                {
-                    return this.Item != null && this.Type != MyCommon.UploadFileType.Invalid;
-                }
-            }
+                => this.Item != null && this.Type != MyCommon.UploadFileType.Invalid;
 
             public string Path
-            {
-                get
-                {
-                    return this.Item?.Path ?? "";
-                }
-            }
+                => this.Item?.Path ?? "";
 
             public string AltText => this.Item?.AltText ?? "";
 
             public override string ToString()
-            {
-                return this.Text;
-            }
+                => this.Text;
         }
 
         private Dictionary<string, IMediaUploadService> pictureService;
@@ -154,9 +136,6 @@ namespace OpenTween
 
             this.pictureService = new Dictionary<string, IMediaUploadService> {
                 ["Twitter"] = new TwitterPhoto(tw, twitterConfig),
-                ["img.ly"] = new imgly(tw, twitterConfig),
-                ["yfrog"] = new yfrog(tw, twitterConfig),
-                ["ついっぷるフォト"] = new TwipplePhoto(tw, twitterConfig),
                 ["Imgur"] = new Imgur(tw, twitterConfig),
                 ["Mobypicture"] = new Mobypicture(tw, twitterConfig),
             };
@@ -385,7 +364,6 @@ namespace OpenTween
                 MessageBox.Show(Properties.Resources.PostPictureWarn1, Properties.Resources.PostPictureWarn2);
             }
 
-            EndSelection();
             imageService = null;
             mediaItems = null;
             return false;
@@ -489,9 +467,7 @@ namespace OpenTween
         }
 
         private void ImageFromSelectedFile(IMediaItem item, bool noMsgBox)
-        {
-            ImageFromSelectedFile(-1, item, noMsgBox);
-        }
+            => this.ImageFromSelectedFile(-1, item, noMsgBox);
 
         private void ImageFromSelectedFile(int index, IMediaItem item, bool noMsgBox)
         {
@@ -605,9 +581,7 @@ namespace OpenTween
         }
 
         private void ImageCancelButton_Click(object sender, EventArgs e)
-        {
-            EndSelection();
-        }
+            => this.EndSelection();
 
         private void ImageSelection_KeyDown(object sender, KeyEventArgs e)
         {
@@ -662,7 +636,10 @@ namespace OpenTween
             else
             {
                 idx = ImageServiceCombo.Items.IndexOf(svc);
-                if (idx == -1) idx = index ?? 0;
+
+                // svc が空白以外かつ存在しないサービス名の場合は Twitter を選択させる
+                // (廃止されたサービスを選択していた場合の対応)
+                if (idx == -1) idx = 0;
             }
 
             try
@@ -785,9 +762,7 @@ namespace OpenTween
         }
 
         private void SetSelectedImagePage(IMediaItem item, MyCommon.UploadFileType type)
-        {
-            SetImagePage(-1, item, type);
-        }
+            => this.SetImagePage(-1, item, type);
 
         private void SetImagePage(int index, IMediaItem item, MyCommon.UploadFileType type)
         {
@@ -806,9 +781,7 @@ namespace OpenTween
         }
 
         private void ClearSelectedImagePage()
-        {
-            ClearImagePage(-1);
-        }
+            => this.ClearImagePage(-1);
 
         private void ClearImagePage(int index)
         {
@@ -838,9 +811,7 @@ namespace OpenTween
         }
 
         private void ImagePageCombo_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            ValidateSelectedImagePage();
-        }
+            => this.ValidateSelectedImagePage();
 
         private void AlternativeTextBox_Validating(object sender, CancelEventArgs e)
         {

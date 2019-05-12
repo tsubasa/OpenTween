@@ -126,7 +126,8 @@ namespace OpenTween.Api
             return this.apiConnection.GetAsync<TwitterStatus>(endpoint, param, "/statuses/show/:id");
         }
 
-        public Task<LazyJson<TwitterStatus>> StatusesUpdate(string status, long? replyToId, IReadOnlyList<long> mediaIds)
+        public Task<LazyJson<TwitterStatus>> StatusesUpdate(string status, long? replyToId, IReadOnlyList<long> mediaIds,
+            bool? autoPopulateReplyMetadata = null, IReadOnlyList<long> excludeReplyUserIds = null, string attachmentUrl = null)
         {
             var endpoint = new Uri("statuses/update.json", UriKind.Relative);
             var param = new Dictionary<string, string>
@@ -141,6 +142,12 @@ namespace OpenTween.Api
                 param["in_reply_to_status_id"] = replyToId.ToString();
             if (mediaIds != null && mediaIds.Count > 0)
                 param.Add("media_ids", string.Join(",", mediaIds));
+            if (autoPopulateReplyMetadata != null)
+                param["auto_populate_reply_metadata"] = autoPopulateReplyMetadata.Value ? "true" : "false";
+            if (excludeReplyUserIds != null && excludeReplyUserIds.Count > 0)
+                param["exclude_reply_user_ids"] = string.Join(",", excludeReplyUserIds);
+            if (attachmentUrl != null)
+                param["attachment_url"] = attachmentUrl;
 
             return this.apiConnection.PostLazyAsync<TwitterStatus>(endpoint, param);
         }
@@ -374,67 +381,64 @@ namespace OpenTween.Api
             return this.apiConnection.PostLazyAsync<TwitterUser>(endpoint, param);
         }
 
-        public Task<TwitterDirectMessage[]> DirectMessagesRecv(int? count = null, long? maxId = null, long? sinceId = null)
+        public Task<TwitterMessageEventList> DirectMessagesEventsList(int? count = null, string cursor = null)
         {
-            var endpoint = new Uri("direct_messages.json", UriKind.Relative);
-            var param = new Dictionary<string, string>
-            {
-                ["full_text"] = "true",
-                ["include_entities"] = "true",
-                ["include_ext_alt_text"] = "true",
-            };
+            var endpoint = new Uri("direct_messages/events/list.json", UriKind.Relative);
+            var param = new Dictionary<string, string>();
 
             if (count != null)
                 param["count"] = count.ToString();
-            if (maxId != null)
-                param["max_id"] = maxId.ToString();
-            if (sinceId != null)
-                param["since_id"] = sinceId.ToString();
+            if (cursor != null)
+                param["cursor"] = cursor;
 
-            return this.apiConnection.GetAsync<TwitterDirectMessage[]>(endpoint, param, "/direct_messages");
+            return this.apiConnection.GetAsync<TwitterMessageEventList>(endpoint, param, "/direct_messages/events/list");
         }
 
-        public Task<TwitterDirectMessage[]> DirectMessagesSent(int? count = null, long? maxId = null, long? sinceId = null)
+        public Task DirectMessagesEventsNew(long recipientId, string text, long? mediaId = null)
         {
-            var endpoint = new Uri("direct_messages/sent.json", UriKind.Relative);
-            var param = new Dictionary<string, string>
+            var endpoint = new Uri("direct_messages/events/new.json", UriKind.Relative);
+
+            var attachment = "";
+            if (mediaId != null)
             {
-                ["full_text"] = "true",
-                ["include_entities"] = "true",
-                ["include_ext_alt_text"] = "true",
-            };
+                attachment = "," + $@"
+        ""attachment"": {{
+          ""type"": ""media"",
+          ""media"": {{
+            ""id"": ""{JsonUtils.EscapeJsonString(mediaId.ToString())}""
+          }}
+        }}";
+            }
 
-            if (count != null)
-                param["count"] = count.ToString();
-            if (maxId != null)
-                param["max_id"] = maxId.ToString();
-            if (sinceId != null)
-                param["since_id"] = sinceId.ToString();
+            var json = $@"{{
+  ""event"": {{
+    ""type"": ""message_create"",
+    ""message_create"": {{
+      ""target"": {{
+        ""recipient_id"": ""{JsonUtils.EscapeJsonString(recipientId.ToString())}""
+      }},
+      ""message_data"": {{
+        ""text"": ""{JsonUtils.EscapeJsonString(text)}""{attachment}
+      }}
+    }}
+  }}
+}}";
 
-            return this.apiConnection.GetAsync<TwitterDirectMessage[]>(endpoint, param, "/direct_messages/sent");
+            return this.apiConnection.PostJsonAsync(endpoint, json);
         }
 
-        public Task<LazyJson<TwitterDirectMessage>> DirectMessagesNew(string status, string sendTo)
+        public Task DirectMessagesEventsDestroy(string eventId)
         {
-            var endpoint = new Uri("direct_messages/new.json", UriKind.Relative);
+            var endpoint = new Uri("direct_messages/events/destroy.json", UriKind.Relative);
             var param = new Dictionary<string, string>
             {
-                ["text"] = status,
-                ["screen_name"] = sendTo,
+                ["id"] = eventId.ToString(),
             };
 
-            return this.apiConnection.PostLazyAsync<TwitterDirectMessage>(endpoint, param);
-        }
+            // なぜか application/x-www-form-urlencoded でパラメーターを送ると Bad Request になる謎仕様
+            endpoint = new Uri(endpoint.OriginalString + "?" + MyCommon.BuildQueryString(param), UriKind.Relative);
 
-        public Task<LazyJson<TwitterDirectMessage>> DirectMessagesDestroy(long statusId)
-        {
-            var endpoint = new Uri("direct_messages/destroy.json", UriKind.Relative);
-            var param = new Dictionary<string, string>
-            {
-                ["id"] = statusId.ToString(),
-            };
-
-            return this.apiConnection.PostLazyAsync<TwitterDirectMessage>(endpoint, param);
+            return this.apiConnection.DeleteAsync(endpoint);
         }
 
         public Task<TwitterUser> UsersShow(string screenName)
@@ -449,6 +453,20 @@ namespace OpenTween.Api
             };
 
             return this.apiConnection.GetAsync<TwitterUser>(endpoint, param, "/users/show/:id");
+        }
+
+        public Task<TwitterUser[]> UsersLookup(IReadOnlyList<string> userIds)
+        {
+            var endpoint = new Uri("users/lookup.json", UriKind.Relative);
+            var param = new Dictionary<string, string>
+            {
+                ["user_id"] = string.Join(",", userIds),
+                ["include_entities"] = "true",
+                ["include_ext_alt_text"] = "true",
+                ["tweet_mode"] = "extended",
+            };
+
+            return this.apiConnection.GetAsync<TwitterUser[]>(endpoint, param, "/users/lookup");
         }
 
         public Task<LazyJson<TwitterUser>> UsersReportSpam(string screenName)
@@ -541,7 +559,7 @@ namespace OpenTween.Api
             return this.apiConnection.PostLazyAsync<TwitterFriendship>(endpoint, param);
         }
 
-        public Task<long[]> NoRetweetIds(long? cursor = null)
+        public Task<long[]> NoRetweetIds()
         {
             var endpoint = new Uri("friendships/no_retweets/ids.json", UriKind.Relative);
 
@@ -683,28 +701,74 @@ namespace OpenTween.Api
             return this.apiConnection.GetAsync<TwitterConfiguration>(endpoint, null, "/help/configuration");
         }
 
-        public Task<LazyJson<TwitterUploadMediaResult>> MediaUpload(IMediaItem media)
+        public Task<LazyJson<TwitterUploadMediaInit>> MediaUploadInit(long totalBytes, string mediaType, string mediaCategory = null)
         {
             var endpoint = new Uri("https://upload.twitter.com/1.1/media/upload.json");
+            var param = new Dictionary<string, string>
+            {
+                ["command"] = "INIT",
+                ["total_bytes"] = totalBytes.ToString(),
+                ["media_type"] = mediaType,
+            };
+
+            if (mediaCategory != null)
+                param["media_category"] = mediaCategory;
+
+            return this.apiConnection.PostLazyAsync<TwitterUploadMediaInit>(endpoint, param);
+        }
+
+        public Task MediaUploadAppend(long mediaId, int segmentIndex, IMediaItem media)
+        {
+            var endpoint = new Uri("https://upload.twitter.com/1.1/media/upload.json");
+            var param = new Dictionary<string, string>
+            {
+                ["command"] = "APPEND",
+                ["media_id"] = mediaId.ToString(),
+                ["segment_index"] = segmentIndex.ToString(),
+            };
             var paramMedia = new Dictionary<string, IMediaItem>
             {
                 ["media"] = media,
             };
 
-            return this.apiConnection.PostLazyAsync<TwitterUploadMediaResult>(endpoint, null, paramMedia);
+            return this.apiConnection.PostAsync(endpoint, param, paramMedia);
+        }
+
+        public Task<LazyJson<TwitterUploadMediaResult>> MediaUploadFinalize(long mediaId)
+        {
+            var endpoint = new Uri("https://upload.twitter.com/1.1/media/upload.json");
+            var param = new Dictionary<string, string>
+            {
+                ["command"] = "FINALIZE",
+                ["media_id"] = mediaId.ToString(),
+            };
+
+            return this.apiConnection.PostLazyAsync<TwitterUploadMediaResult>(endpoint, param);
+        }
+
+        public Task<TwitterUploadMediaResult> MediaUploadStatus(long mediaId)
+        {
+            var endpoint = new Uri("https://upload.twitter.com/1.1/media/upload.json");
+            var param = new Dictionary<string, string>
+            {
+                ["command"] = "STATUS",
+                ["media_id"] = mediaId.ToString(),
+            };
+
+            return this.apiConnection.GetAsync<TwitterUploadMediaResult>(endpoint, param, endpointName: null);
         }
 
         public Task MediaMetadataCreate(long mediaId, string altText)
         {
             var endpoint = new Uri("https://upload.twitter.com/1.1/media/metadata/create.json");
 
-            var escapedAltText = EscapeJsonString(altText);
+            var escapedAltText = JsonUtils.EscapeJsonString(altText);
             var json = $@"{{""media_id"": ""{mediaId}"", ""alt_text"": {{""text"": ""{escapedAltText}""}}}}";
 
             return this.apiConnection.PostJsonAsync(endpoint, json);
         }
 
-        public Task<Stream> UserStreams(string replies = null, string track = null)
+        public TwitterStreamObservable UserStreams(string replies = null, string track = null)
         {
             var endpoint = new Uri("https://userstream.twitter.com/1.1/user.json");
             var param = new Dictionary<string, string>();
@@ -714,35 +778,16 @@ namespace OpenTween.Api
             if (!string.IsNullOrEmpty(track))
                 param["track"] = track;
 
-            return this.apiConnection.GetStreamingStreamAsync(endpoint, param);
+            Task<Stream> openStream()
+                => this.apiConnection.GetStreamingStreamAsync(endpoint, param);
+
+            return new TwitterStreamObservable(openStream);
         }
 
         public OAuthEchoHandler CreateOAuthEchoHandler(Uri authServiceProvider, Uri realm = null)
-        {
-            return ((TwitterApiConnection)this.apiConnection).CreateOAuthEchoHandler(authServiceProvider, realm);
-        }
+            => ((TwitterApiConnection)this.apiConnection).CreateOAuthEchoHandler(authServiceProvider, realm);
 
         public void Dispose()
-        {
-            this.apiConnection?.Dispose();
-        }
-
-        /// <summary>JSON に出力する文字列を ECMA-404 に従ってエスケープする</summary>
-        public static string EscapeJsonString(string rawText)
-        {
-            var builder = new StringBuilder(rawText.Length + 20);
-
-            foreach (var c in rawText)
-            {
-                if (c <= 0x1F || char.IsSurrogate(c))
-                    builder.AppendFormat(@"\u{0:X4}", (int)c);
-                else if (c == '\\' || c == '\"')
-                    builder.Append('\\').Append(c);
-                else
-                    builder.Append(c);
-            }
-
-            return builder.ToString();
-        }
+            => this.apiConnection?.Dispose();
     }
 }

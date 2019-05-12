@@ -20,13 +20,15 @@
 // Boston, MA 02110-1301, USA.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Text;
+using System.Runtime.Serialization.Json;
 using System.Threading.Tasks;
 using System.Web;
+using System.Xml;
+using System.Xml.Linq;
+using System.Xml.XPath;
 using Moq;
 using Xunit;
 
@@ -46,21 +48,41 @@ namespace OpenTween.Api
 
                 var translateApi = mock.Object;
 
-                mockHandler.Enqueue(x =>
+                mockHandler.Enqueue(async x =>
                 {
-                    Assert.Equal(HttpMethod.Get, x.Method);
+                    Assert.Equal(HttpMethod.Post, x.Method);
                     Assert.Equal(MicrosoftTranslatorApi.TranslateEndpoint.AbsoluteUri,
                         x.RequestUri.GetLeftPart(UriPartial.Path));
 
                     var query = HttpUtility.ParseQueryString(x.RequestUri.Query);
 
-                    Assert.Equal("hogehoge", query["text"]);
+                    Assert.Equal("3.0", query["api-version"]);
                     Assert.Equal("ja", query["to"]);
                     Assert.Equal("en", query["from"]);
 
+                    var requestBody = await x.Content.ReadAsByteArrayAsync()
+                        .ConfigureAwait(false);
+
+                    using (var jsonReader = JsonReaderWriterFactory.CreateJsonReader(requestBody, XmlDictionaryReaderQuotas.Max))
+                    {
+                        var xElm = XElement.Load(jsonReader);
+
+                        var textElm = xElm.XPathSelectElement("/item/Text");
+                        Assert.Equal("hogehoge", textElm.Value);
+                    }
+
                     return new HttpResponseMessage(HttpStatusCode.OK)
                     {
-                        Content = new StringContent("ほげほげ"),
+                        Content = new StringContent(@"[
+    {
+        ""translations"": [
+            {
+                ""text"": ""ほげほげ"",
+                ""to"": ""ja""
+            }
+        ]
+    }
+]"),
                     };
                 });
 
@@ -88,7 +110,7 @@ namespace OpenTween.Api
             Assert.Equal("1234abcd", translateApi.AccessToken);
 
             // 期待値との差が 3 秒以内であるか
-            var expectedExpiresAt = DateTime.Now + TimeSpan.FromSeconds(1000 - 30);
+            var expectedExpiresAt = DateTimeUtc.Now + TimeSpan.FromSeconds(1000 - 30);
             Assert.True((translateApi.RefreshAccessTokenAt - expectedExpiresAt).Duration() < TimeSpan.FromSeconds(3));
         }
 
@@ -99,7 +121,7 @@ namespace OpenTween.Api
 
             var translateApi = mock.Object;
             translateApi.AccessToken = "1234abcd";
-            translateApi.RefreshAccessTokenAt = DateTime.Now + TimeSpan.FromMinutes(3);
+            translateApi.RefreshAccessTokenAt = DateTimeUtc.Now + TimeSpan.FromMinutes(3);
 
             await translateApi.UpdateAccessTokenIfExpired()
                 .ConfigureAwait(false);
@@ -117,7 +139,7 @@ namespace OpenTween.Api
 
             var translateApi = mock.Object;
             translateApi.AccessToken = "1234abcd";
-            translateApi.RefreshAccessTokenAt = DateTime.Now - TimeSpan.FromMinutes(3);
+            translateApi.RefreshAccessTokenAt = DateTimeUtc.Now - TimeSpan.FromMinutes(3);
 
             await translateApi.UpdateAccessTokenIfExpired()
                 .ConfigureAwait(false);
@@ -125,7 +147,7 @@ namespace OpenTween.Api
             Assert.Equal("5678efgh", translateApi.AccessToken);
 
             // 期待値との差が 3 秒以内であるか
-            var expectedExpiresAt = DateTime.Now + TimeSpan.FromSeconds(1000 - 30);
+            var expectedExpiresAt = DateTimeUtc.Now + TimeSpan.FromSeconds(1000 - 30);
             Assert.True((translateApi.RefreshAccessTokenAt - expectedExpiresAt).Duration() < TimeSpan.FromSeconds(3));
         }
 

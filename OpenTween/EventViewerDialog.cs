@@ -37,6 +37,7 @@ using System.Text.RegularExpressions;
 using System.IO;
 using System.Globalization;
 using OpenTween.Setting;
+using System.Threading.Tasks;
 
 namespace OpenTween
 {
@@ -79,7 +80,7 @@ namespace OpenTween
 
         private ListViewItem CreateListViewItem(Twitter.FormattedEvent source)
         {
-            string[] s = { source.CreatedAt.ToString(), source.Event.ToUpper(CultureInfo.CurrentCulture), source.Username, source.Target };
+            string[] s = { source.CreatedAt.ToLocalTimeString(), source.Event.ToUpper(CultureInfo.CurrentCulture), source.Username, source.Target };
             return new ListViewItem(s);
         }
 
@@ -99,17 +100,32 @@ namespace OpenTween
         }
 
         private async void EventList_DoubleClick(object sender, EventArgs e)
+            => await this.OpenEventStatusOrUser();
+
+        private async void EventList_KeyDown(object sender, KeyEventArgs e)
         {
-            if (EventList.SelectedIndices.Count != 0 && _filterdEventSource[EventList.SelectedIndices[0]] != null)
+            if (e.KeyData == Keys.Enter)
+                await this.OpenEventStatusOrUser();
+        }
+
+        private async Task OpenEventStatusOrUser()
+        {
+            if (this.EventList.SelectedIndices.Count == 0)
+                return;
+
+            var tweenMain = (TweenMain)this.Owner;
+            var selectedEvent = this._filterdEventSource[this.EventList.SelectedIndices[0]];
+            if (selectedEvent != null)
             {
-                await ((TweenMain)this.Owner).OpenUriInBrowserAsync("https://twitter.com/" + _filterdEventSource[EventList.SelectedIndices[0]].Username);
+                if (selectedEvent.Id != 0)
+                    await tweenMain.OpenRelatedTab(selectedEvent.Id);
+                else
+                    await tweenMain.OpenUriAsync(new Uri("https://twitter.com/" + selectedEvent.Username));
             }
         }
 
         private MyCommon.EVENTTYPE ParseEventTypeFromTag()
-        {
-            return (MyCommon.EVENTTYPE)Enum.Parse(typeof(MyCommon.EVENTTYPE), _curTab.Tag.ToString());
-        }
+            => (MyCommon.EVENTTYPE)Enum.Parse(typeof(MyCommon.EVENTTYPE), _curTab.Tag.ToString());
 
         private bool IsFilterMatch(Twitter.FormattedEvent x)
         {
@@ -157,19 +173,13 @@ namespace OpenTween
         }
 
         private void CheckExcludeMyEvent_CheckedChanged(object sender, EventArgs e)
-        {
-            CreateFilterdEventSource();
-        }
+            => this.CreateFilterdEventSource();
 
         private void ButtonRefresh_Click(object sender, EventArgs e)
-        {
-            CreateFilterdEventSource();
-        }
+            => this.CreateFilterdEventSource();
 
         private void TabEventType_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            CreateFilterdEventSource();
-        }
+            => this.CreateFilterdEventSource();
 
         private void TabEventType_Selecting(object sender, TabControlCancelEventArgs e)
         {
@@ -204,9 +214,7 @@ namespace OpenTween
         }
 
         private void EventList_CacheVirtualItems(object sender, CacheVirtualItemsEventArgs e)
-        {
-            CreateCache(e.StartIndex, e.EndIndex);
-        }
+            => this.CreateCache(e.StartIndex, e.EndIndex);
 
         private void CreateCache(int StartIndex, int EndIndex)
         {
@@ -235,10 +243,10 @@ namespace OpenTween
             switch (rslt)
             {
                 case DialogResult.Yes:
-                    SaveFileDialog1.FileName = MyCommon.GetAssemblyName() + "Events" + _curTab.Tag + DateTime.Now.ToString("yyMMdd-HHmmss") + ".tsv";
+                    SaveFileDialog1.FileName = $"{ApplicationSettings.AssemblyName}Events{_curTab.Tag}{DateTimeUtc.Now.ToLocalTime():yyMMdd-HHmmss}.tsv";
                     break;
                 case DialogResult.No:
-                    SaveFileDialog1.FileName = MyCommon.GetAssemblyName() + "Events" + DateTime.Now.ToString("yyMMdd-HHmmss") + ".tsv";
+                    SaveFileDialog1.FileName = $"{ApplicationSettings.AssemblyName}Events{DateTimeUtc.Now.ToLocalTime():yyMMdd-HHmmss}.tsv";
                     break;
                 default:
                     return;
@@ -277,7 +285,7 @@ namespace OpenTween
             foreach (Twitter.FormattedEvent _event in source)
             {
                 sw.WriteLine(_event.Eventtype + "\t" +
-                             "\"" + _event.CreatedAt + "\"\t" +
+                             "\"" + _event.CreatedAt.ToLocalTimeString() + "\"\t" +
                              _event.Event + "\t" +
                              _event.Username + "\t" +
                              _event.Target + "\t" +

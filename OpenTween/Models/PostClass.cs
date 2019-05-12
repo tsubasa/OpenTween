@@ -71,7 +71,7 @@ namespace OpenTween.Models
 
         public string ImageUrl { get; set; }
         public string ScreenName { get; set; }
-        public DateTime CreatedAt { get; set; }
+        public DateTimeUtc CreatedAt { get; set; }
         public long StatusId { get; set; }
         private bool _IsFav;
 
@@ -102,7 +102,7 @@ namespace OpenTween.Models
         private long? _InReplyToStatusId;
         public string Source { get; set; }
         public Uri SourceUri { get; set; }
-        public List<string> ReplyToList { get; set; }
+        public List<(long UserId, string ScreenName)> ReplyToList { get; set; }
         public bool IsMe { get; set; }
         public bool IsDm { get; set; }
         public long UserId { get; set; }
@@ -153,7 +153,7 @@ namespace OpenTween.Models
                 if (deepExpand)
                     this.ExpandTask = this.DeepExpandAsync();
                 else
-                    this.ExpandTask = Task.FromResult(0);
+                    this.ExpandTask = Task.CompletedTask;
             }
 
             protected virtual async Task DeepExpandAsync()
@@ -191,18 +191,13 @@ namespace OpenTween.Models
         {
             RetweetedBy = "";
             Media = new List<MediaInfo>();
-            ReplyToList = new List<string>();
-            QuoteStatusIds = new long[0];
-            ExpandedUrls = new ExpandedUrlInfo[0];
+            ReplyToList = new List<(long, string)>();
+            QuoteStatusIds = Array.Empty<long>();
+            ExpandedUrls = Array.Empty<ExpandedUrlInfo>();
         }
 
         public string TextSingleLine
-        {
-            get
-            {
-                return this.TextFromApi == null ? null : this.TextFromApi.Replace("\n", " ");
-            }
-        }
+            => this.TextFromApi?.Replace("\n", " ");
 
         public bool IsFav
         {
@@ -235,10 +230,7 @@ namespace OpenTween.Models
 
         public bool IsProtect
         {
-            get
-            {
-                return _IsProtect;
-            }
+            get => this._IsProtect;
             set
             {
                 if (value)
@@ -254,10 +246,7 @@ namespace OpenTween.Models
         }
         public bool IsMark
         {
-            get
-            {
-                return _IsMark;
-            }
+            get => this._IsMark;
             set
             {
                 if (value)
@@ -273,10 +262,7 @@ namespace OpenTween.Models
         }
         public long? InReplyToStatusId
         {
-            get
-            {
-                return _InReplyToStatusId;
-            }
+            get => this._InReplyToStatusId;
             set
             {
                 if (value != null)
@@ -293,10 +279,7 @@ namespace OpenTween.Models
 
         public bool IsDeleted
         {
-            get
-            {
-                return _IsDeleted;
-            }
+            get => this._IsDeleted;
             set
             {
                 if (value)
@@ -305,7 +288,7 @@ namespace OpenTween.Models
                     this.InReplyToUser = "";
                     this.InReplyToUserId = null;
                     this.IsReply = false;
-                    this.ReplyToList = new List<string>();
+                    this.ReplyToList = new List<(long, string)>();
                     this._states = States.None;
                 }
                 _IsDeleted = value;
@@ -313,19 +296,11 @@ namespace OpenTween.Models
         }
 
         protected virtual PostClass RetweetSource
-        {
-            get
-            {
-                return TabInformations.GetInstance().RetweetSource(this.RetweetedId.Value);
-            }
-        }
+            => TabInformations.GetInstance().RetweetSource(this.RetweetedId.Value);
 
         public StatusGeo? PostGeo
         {
-            get
-            {
-                return _postGeo;
-            }
+            get => this._postGeo;
             set
             {
                 if (value != null)
@@ -341,12 +316,7 @@ namespace OpenTween.Models
         }
 
         public int StateIndex
-        {
-            get
-            {
-                return (int)_states - 1;
-            }
-        }
+            => (int)_states - 1;
 
         // 互換性のために用意
         public string SourceHtml
@@ -461,7 +431,7 @@ namespace OpenTween.Models
         public PostClass Clone()
         {
             var clone = (PostClass)this.MemberwiseClone();
-            clone.ReplyToList = new List<string>(this.ReplyToList);
+            clone.ReplyToList = new List<(long, string)>(this.ReplyToList);
             clone.Media = new List<MediaInfo>(this.Media);
             clone.QuoteStatusIds = this.QuoteStatusIds.ToArray();
             clone.ExpandedUrls = this.ExpandedUrls.Select(x => x.Clone()).ToArray();
@@ -512,8 +482,6 @@ namespace OpenTween.Models
         }
 
         public override int GetHashCode()
-        {
-            return this.StatusId.GetHashCode();
-        }
+            => this.StatusId.GetHashCode();
     }
 }

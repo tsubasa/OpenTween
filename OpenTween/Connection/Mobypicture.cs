@@ -86,10 +86,7 @@ namespace OpenTween.Connection
             this.mobypictureApi = new MobypictureApi(twitter.Api);
         }
 
-        public int MaxMediaCount
-        {
-            get { return 1; }
-        }
+        public int MaxMediaCount => 1;
 
         public string SupportedFormatsStrForDialog
         {
@@ -107,9 +104,7 @@ namespace OpenTween.Connection
         public bool CanUseAltText => false;
 
         public bool CheckFileExtension(string fileExtension)
-        {
-            return AllowedExtensions.Contains(fileExtension, StringComparer.OrdinalIgnoreCase);
-        }
+            => AllowedExtensions.Contains(fileExtension, StringComparer.OrdinalIgnoreCase);
 
         public bool CheckFileSize(string fileExtension, long fileSize)
         {
@@ -118,11 +113,9 @@ namespace OpenTween.Connection
         }
 
         public long? GetMaxFileSize(string fileExtension)
-        {
-            return MaxFileSize;
-        }
+            => MaxFileSize;
 
-        public async Task PostStatusAsync(string text, long? inReplyToStatusId, IMediaItem[] mediaItems)
+        public async Task<PostStatusParams> UploadAsync(IMediaItem[] mediaItems, PostStatusParams postParams)
         {
             if (mediaItems == null)
                 throw new ArgumentNullException(nameof(mediaItems));
@@ -138,26 +131,23 @@ namespace OpenTween.Connection
             if (!item.Exists)
                 throw new ArgumentException("Err:Media not found.");
 
-            var xml = await this.mobypictureApi.UploadFileAsync(item, text)
+            var xml = await this.mobypictureApi.UploadFileAsync(item, postParams.Text)
                 .ConfigureAwait(false);
 
             var imageUrlElm = xml.XPathSelectElement("/rsp/media/mediaurl");
             if (imageUrlElm == null)
                 throw new WebApiException("Invalid API response", xml.ToString());
 
-            var textWithImageUrl = text + " " + imageUrlElm.Value.Trim();
+            postParams.Text += " " + imageUrlElm.Value.Trim();
 
-            await this.twitter.PostStatus(textWithImageUrl, inReplyToStatusId)
-                .ConfigureAwait(false);
+            return postParams;
         }
 
         public int GetReservedTextLength(int mediaCount)
             => this.twitterConfig.ShortUrlLength + 1;
 
         public void UpdateTwitterConfiguration(TwitterConfiguration config)
-        {
-            this.twitterConfig = config;
-        }
+            => this.twitterConfig = config;
 
         public class MobypictureApi
         {

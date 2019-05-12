@@ -191,7 +191,7 @@ namespace OpenTween.Models
                 InReplyToUser = "hogehoge",
                 InReplyToUserId = 100L,
                 IsReply = true,
-                ReplyToList = new List<string> {"hogehoge"},
+                ReplyToList = { (100L, "hogehoge") },
             };
 
             post.IsDeleted = true;
@@ -369,9 +369,9 @@ namespace OpenTween.Models
             Assert.Equal("@aaa", originalPost.ScreenName);
             Assert.Equal(1L, originalPost.UserId);
 
-            Assert.Equal(null, originalPost.RetweetedId);
+            Assert.Null(originalPost.RetweetedId);
             Assert.Equal("", originalPost.RetweetedBy);
-            Assert.Equal(null, originalPost.RetweetedByUserId);
+            Assert.Null(originalPost.RetweetedByUserId);
             Assert.Equal(1, originalPost.RetweetedCount);
         }
 

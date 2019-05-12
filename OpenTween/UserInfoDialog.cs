@@ -101,7 +101,7 @@ namespace OpenTween
             this.LabelScreenName.Text = user.ScreenName;
             this.LabelName.Text = user.Name;
             this.LabelLocation.Text = user.Location ?? "";
-            this.LabelCreatedAt.Text = MyCommon.DateTimeParse(user.CreatedAt).ToString();
+            this.LabelCreatedAt.Text = MyCommon.DateTimeParse(user.CreatedAt).ToLocalTimeString();
 
             if (user.Protected)
                 this.LabelIsProtected.Text = Properties.Resources.Yes;
@@ -168,10 +168,12 @@ namespace OpenTween
                     entity.ExpandedUrl = await ShortUrl.Instance.ExpandUrlAsync(entity.ExpandedUrl);
 
                 // user.entities には urls 以外のエンティティが含まれていないため、テキストをもとに生成する
-                entities.Hashtags = TweetExtractor.ExtractHashtagEntities(descriptionText).ToArray();
-                entities.UserMentions = TweetExtractor.ExtractMentionEntities(descriptionText).ToArray();
+                var mergedEntities = entities.Urls.AsEnumerable<TwitterEntity>()
+                    .Concat(TweetExtractor.ExtractHashtagEntities(descriptionText))
+                    .Concat(TweetExtractor.ExtractMentionEntities(descriptionText))
+                    .Concat(TweetExtractor.ExtractEmojiEntities(descriptionText));
 
-                var html = TweetFormatter.AutoLinkHtml(descriptionText, entities);
+                var html = TweetFormatter.AutoLinkHtml(descriptionText, mergedEntities);
                 html = this.mainForm.createDetailHtml(html);
 
                 if (cancellationToken.IsCancellationRequested)
@@ -247,9 +249,11 @@ namespace OpenTween
                 foreach (var entity in entities.Urls)
                     entity.ExpandedUrl = await ShortUrl.Instance.ExpandUrlAsync(entity.ExpandedUrl);
 
-                var html = TweetFormatter.AutoLinkHtml(status.FullText, entities);
+                var mergedEntities = entities.Concat(TweetExtractor.ExtractEmojiEntities(status.FullText));
+
+                var html = TweetFormatter.AutoLinkHtml(status.FullText, mergedEntities);
                 html = this.mainForm.createDetailHtml(html +
-                    " Posted at " + MyCommon.DateTimeParse(status.CreatedAt) +
+                    " Posted at " + MyCommon.DateTimeParse(status.CreatedAt).ToLocalTimeString() +
                     " via " + status.Source);
 
                 if (cancellationToken.IsCancellationRequested)
@@ -309,25 +313,21 @@ namespace OpenTween
             this.TextBoxName.Height = this.LabelName.Height;
             this.TextBoxName.Width = this.LabelName.Width;
             this.TextBoxName.BackColor = this.mainForm.InputBackColor;
-            this.TextBoxName.MaxLength = 20;
 
             this.TextBoxLocation.Location = this.LabelLocation.Location;
             this.TextBoxLocation.Height = this.LabelLocation.Height;
             this.TextBoxLocation.Width = this.LabelLocation.Width;
             this.TextBoxLocation.BackColor = this.mainForm.InputBackColor;
-            this.TextBoxLocation.MaxLength = 30;
 
             this.TextBoxWeb.Location = this.LinkLabelWeb.Location;
             this.TextBoxWeb.Height = this.LinkLabelWeb.Height;
             this.TextBoxWeb.Width = this.LinkLabelWeb.Width;
             this.TextBoxWeb.BackColor = this.mainForm.InputBackColor;
-            this.TextBoxWeb.MaxLength = 100;
 
             this.TextBoxDescription.Location = this.DescriptionBrowser.Location;
             this.TextBoxDescription.Height = this.DescriptionBrowser.Height;
             this.TextBoxDescription.Width = this.DescriptionBrowser.Width;
             this.TextBoxDescription.BackColor = this.mainForm.InputBackColor;
-            this.TextBoxDescription.MaxLength = 160;
             this.TextBoxDescription.Multiline = true;
             this.TextBoxDescription.ScrollBars = ScrollBars.Vertical;
         }
@@ -400,9 +400,7 @@ namespace OpenTween
         }
 
         private void ShowUserInfo_Shown(object sender, EventArgs e)
-        {
-            ButtonClose.Focus();
-        }
+            => this.ButtonClose.Focus();
 
         private async void WebBrowser_Navigating(object sender, WebBrowserNavigatingEventArgs e)
         {
@@ -447,19 +445,13 @@ namespace OpenTween
         }
 
         private async void LinkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
-        {
-            await this.mainForm.OpenUriInBrowserAsync("https://support.twitter.com/groups/31-twitter-basics/topics/111-features/articles/268350-x8a8d-x8a3c-x6e08-x307f-x30a2-x30ab-x30a6-x30f3-x30c8-x306b-x3064-x3044-x3066");
-        }
+            => await this.mainForm.OpenUriInBrowserAsync("https://support.twitter.com/groups/31-twitter-basics/topics/111-features/articles/268350-x8a8d-x8a3c-x6e08-x307f-x30a2-x30ab-x30a6-x30f3-x30c8-x306b-x3064-x3044-x3066");
 
         private async void LinkLabel2_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
-        {
-            await this.mainForm.OpenUriInBrowserAsync("https://support.twitter.com/groups/31-twitter-basics/topics/107-my-profile-account-settings/articles/243055-x516c-x958b-x3001-x975e-x516c-x958b-x30a2-x30ab-x30a6-x30f3-x30c8-x306b-x3064-x3044-x3066");
-        }
+            => await this.mainForm.OpenUriInBrowserAsync("https://support.twitter.com/groups/31-twitter-basics/topics/107-my-profile-account-settings/articles/243055-x516c-x958b-x3001-x975e-x516c-x958b-x30a2-x30ab-x30a6-x30f3-x30c8-x306b-x3064-x3044-x3066");
 
-        private void ButtonSearchPosts_Click(object sender, EventArgs e)
-        {
-            this.mainForm.AddNewTabForUserTimeline(this._displayUser.ScreenName);
-        }
+        private async void ButtonSearchPosts_Click(object sender, EventArgs e)
+            => await this.mainForm.AddNewTabForUserTimeline(this._displayUser.ScreenName);
 
         private async void UserPicture_Click(object sender, EventArgs e)
         {
@@ -691,12 +683,9 @@ namespace OpenTween
 
         private bool IsValidExtension(string ext)
         {
-            ext = ext.ToLowerInvariant();
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
 
-            return ext.Equals(".jpg", StringComparison.Ordinal) ||
-                ext.Equals(".jpeg", StringComparison.Ordinal) ||
-                ext.Equals(".png", StringComparison.Ordinal) ||
-                ext.Equals(".gif", StringComparison.Ordinal);
+            return allowedExtensions.Contains(ext, StringComparer.InvariantCultureIgnoreCase);
         }
 
         private bool IsValidIconFile(FileInfo info)
@@ -729,7 +718,7 @@ namespace OpenTween
                 !e.Data.GetDataPresent(DataFormats.Html, false))  // WebBrowserコントロールからの絵文字画像D&Dは弾く
             {
                 var ret = MessageBox.Show(this, Properties.Resources.ChangeIconToolStripMenuItem_Confirm,
-                    Application.ProductName, MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+                    ApplicationSettings.ApplicationName, MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
                 if (ret != DialogResult.OK)
                     return;
 

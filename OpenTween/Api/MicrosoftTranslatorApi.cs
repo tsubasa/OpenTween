@@ -29,6 +29,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
+using System.Xml.XPath;
 using OpenTween.Connection;
 
 namespace OpenTween.Api
@@ -36,10 +37,10 @@ namespace OpenTween.Api
     public class MicrosoftTranslatorApi
     {
         public static readonly Uri IssueTokenEndpoint = new Uri("https://api.cognitive.microsoft.com/sts/v1.0/issueToken");
-        public static readonly Uri TranslateEndpoint = new Uri("https://api.microsofttranslator.com/v2/Http.svc/Translate");
+        public static readonly Uri TranslateEndpoint = new Uri("https://api.cognitive.microsofttranslator.com/translate");
 
         public string AccessToken { get; internal set; }
-        public DateTime RefreshAccessTokenAt { get; internal set; }
+        public DateTimeUtc RefreshAccessTokenAt { get; internal set; }
 
         private HttpClient Http => this.localHttpClient ?? Networking.Http;
         private readonly HttpClient localHttpClient;
@@ -50,9 +51,7 @@ namespace OpenTween.Api
         }
 
         public MicrosoftTranslatorApi(HttpClient http)
-        {
-            this.localHttpClient = http;
-        }
+            => this.localHttpClient = http;
 
         public async Task<string> TranslateAsync(string text, string langTo, string langFrom = null)
         {
@@ -61,7 +60,7 @@ namespace OpenTween.Api
 
             var param = new Dictionary<string, string>
             {
-                ["text"] = text,
+                ["api-version"] = "3.0",
                 ["to"] = langTo,
             };
 
@@ -70,21 +69,39 @@ namespace OpenTween.Api
 
             var requestUri = new Uri(TranslateEndpoint, "?" + MyCommon.BuildQueryString(param));
 
-            using (var request = new HttpRequestMessage(HttpMethod.Get, requestUri))
+            using (var request = new HttpRequestMessage(HttpMethod.Post, requestUri))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", this.AccessToken);
 
-                using (var response = await this.Http.SendAsync(request).ConfigureAwait(false))
+                var escapedText = JsonUtils.EscapeJsonString(text);
+                var json = $@"[{{""Text"": ""{escapedText}""}}]";
+
+                using (var body = new StringContent(json, Encoding.UTF8, "application/json"))
                 {
-                    return await response.Content.ReadAsStringAsync()
-                        .ConfigureAwait(false);
+                    request.Content = body;
+
+                    using (var response = await this.Http.SendAsync(request).ConfigureAwait(false))
+                    {
+                        response.EnsureSuccessStatusCode();
+
+                        var responseJson = await response.Content.ReadAsByteArrayAsync()
+                            .ConfigureAwait(false);
+
+                        using (var jsonReader = JsonReaderWriterFactory.CreateJsonReader(responseJson, XmlDictionaryReaderQuotas.Max))
+                        {
+                            var xElm = XElement.Load(jsonReader);
+                            var transtlationTextElm = xElm.XPathSelectElement("/item/translations/item/text[1]");
+
+                            return transtlationTextElm?.Value ?? "";
+                        }
+                    }
                 }
             }
         }
 
         public async Task UpdateAccessTokenIfExpired()
         {
-            if (this.AccessToken != null && this.RefreshAccessTokenAt > DateTime.Now)
+            if (this.AccessToken != null && this.RefreshAccessTokenAt > DateTimeUtc.Now)
                 return;
 
             var (accessToken, expiresIn) = await this.GetAccessTokenAsync()
@@ -93,7 +110,7 @@ namespace OpenTween.Api
             this.AccessToken = accessToken;
 
             // アクセストークンの実際の有効期限より 30 秒早めに失効として扱う
-            this.RefreshAccessTokenAt = DateTime.Now + expiresIn - TimeSpan.FromSeconds(30);
+            this.RefreshAccessTokenAt = DateTimeUtc.Now + expiresIn - TimeSpan.FromSeconds(30);
         }
 
         internal virtual async Task<(string AccessToken, TimeSpan ExpiresIn)> GetAccessTokenAsync()

@@ -104,7 +104,6 @@ namespace OpenTween
         {
             TinyUrl,
             Isgd,
-            Twurl,
             Bitly,
             Jmp,
             Uxnu,
@@ -112,6 +111,7 @@ namespace OpenTween
             Nicoms,
             //廃止
             Unu = -1,
+            Twurl = -1,
         }
 
         public enum HITRESULT
@@ -241,9 +241,7 @@ namespace OpenTween
         }
 
         public static string GetErrorLogPath()
-        {
-            return Path.Combine(Path.GetDirectoryName(MyCommon.EntryAssembly.Location), "ErrorLogs");
-        }
+            => Path.Combine(Path.GetDirectoryName(MyCommon.EntryAssembly.Location), "ErrorLogs");
 
         public static void TraceOut(WebApiException ex)
         {
@@ -262,9 +260,7 @@ namespace OpenTween
         }
 
         public static void TraceOut(string Message)
-        {
-            TraceOut(TraceFlag, Message);
-        }
+            => TraceOut(TraceFlag, Message);
 
         public static void TraceOut(bool OutputFlag, string Message)
         {
@@ -276,20 +272,20 @@ namespace OpenTween
                 if (!Directory.Exists(logPath))
                     Directory.CreateDirectory(logPath);
 
-                var now = DateTime.Now;
-                var fileName = string.Format("{0}Trace-{1:0000}{2:00}{3:00}-{4:00}{5:00}{6:00}.log", GetAssemblyName(), now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second);
+                var now = DateTimeUtc.Now;
+                var fileName = $"{ApplicationSettings.AssemblyName}Trace-{now.ToLocalTime():yyyyMMdd-HHmmss}.log";
                 fileName = Path.Combine(logPath, fileName);
 
                 using (var writer = new StreamWriter(fileName))
                 {
-                    writer.WriteLine("**** TraceOut: {0} ****", DateTime.Now);
+                    writer.WriteLine("**** TraceOut: {0} ****", now.ToLocalTimeString());
                     writer.WriteLine(Properties.Resources.TraceOutText1, ApplicationSettings.FeedbackEmailAddress);
                     writer.WriteLine(Properties.Resources.TraceOutText2, ApplicationSettings.FeedbackTwitterName);
                     writer.WriteLine();
                     writer.WriteLine(Properties.Resources.TraceOutText3);
                     writer.WriteLine(Properties.Resources.TraceOutText4, Environment.OSVersion.VersionString);
                     writer.WriteLine(Properties.Resources.TraceOutText5, Environment.Version);
-                    writer.WriteLine(Properties.Resources.TraceOutText6, MyCommon.GetAssemblyName(), FileVersion);
+                    writer.WriteLine(Properties.Resources.TraceOutText6, ApplicationSettings.AssemblyName, FileVersion);
                     writer.WriteLine(Message);
                     writer.WriteLine();
                 }
@@ -389,9 +385,10 @@ namespace OpenTween
 
                 var ident = WindowsIdentity.GetCurrent();
                 var princ = new WindowsPrincipal(ident);
+                var now = DateTimeUtc.Now;
 
                 var errorReport = string.Join(Environment.NewLine,
-                    string.Format(Properties.Resources.UnhandledExceptionText1, DateTime.Now),
+                    string.Format(Properties.Resources.UnhandledExceptionText1, now.ToLocalTimeString()),
 
                     // 権限書き出し
                     string.Format(Properties.Resources.UnhandledExceptionText11 + princ.IsInRole(WindowsBuiltInRole.Administrator)),
@@ -402,7 +399,7 @@ namespace OpenTween
                     string.Format(Properties.Resources.UnhandledExceptionText4),
                     string.Format(Properties.Resources.UnhandledExceptionText5, Environment.OSVersion.VersionString),
                     string.Format(Properties.Resources.UnhandledExceptionText6, Environment.Version),
-                    string.Format(Properties.Resources.UnhandledExceptionText7, MyCommon.GetAssemblyName(), FileVersion),
+                    string.Format(Properties.Resources.UnhandledExceptionText7, ApplicationSettings.AssemblyName, FileVersion),
 
                     ExceptionOutMessage(ex, ref IsTerminatePermission));
 
@@ -410,8 +407,7 @@ namespace OpenTween
                 if (!Directory.Exists(logPath))
                     Directory.CreateDirectory(logPath);
 
-                var now = DateTime.Now;
-                var fileName = string.Format("{0}-{1:0000}{2:00}{3:00}-{4:00}{5:00}{6:00}.log", GetAssemblyName(), now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second);
+                var fileName = $"{ApplicationSettings.AssemblyName}-{now.ToLocalTime():yyyyMMdd-HHmmss}.log";
                 using (var writer = new StreamWriter(Path.Combine(logPath, fileName)))
                 {
                     writer.Write(errorReport);
@@ -812,29 +808,19 @@ namespace OpenTween
             }
         }
 
-        public static DateTime DateTimeParse(string input)
+        public static DateTimeUtc DateTimeParse(string input)
         {
-            string[] format = {
+            var formats = new[] {
                 "ddd MMM dd HH:mm:ss zzzz yyyy",
                 "ddd, d MMM yyyy HH:mm:ss zzzz",
             };
-            foreach (var fmt in format)
-            {
-                if (DateTime.TryParseExact(input,
-                                          fmt,
-                                          DateTimeFormatInfo.InvariantInfo,
-                                          DateTimeStyles.None,
-                                          out var rslt))
-                {
-                    return rslt;
-                }
-                else
-                {
-                    continue;
-                }
-            }
+
+            if (DateTimeUtc.TryParseExact(input, formats, DateTimeFormatInfo.InvariantInfo, out var result))
+                return result;
+
             TraceOut("Parse Error(DateTimeFormat) : " + input);
-            return new DateTime();
+
+            return DateTimeUtc.Now;
         }
 
         public static T CreateDataFromJson<T>(string content)
@@ -878,9 +864,7 @@ namespace OpenTween
         /// <param name="keys">状態を調べるキー</param>
         /// <returns><paramref name="keys"/> で指定された修飾キーがすべて押されている状態であれば true。それ以外であれば false。</returns>
         public static bool IsKeyDown(params Keys[] keys)
-        {
-            return MyCommon._IsKeyDown(Control.ModifierKeys, keys);
-        }
+            => MyCommon._IsKeyDown(Control.ModifierKeys, keys);
 
         internal static bool _IsKeyDown(Keys modifierKeys, Keys[] targetKeys)
         {
@@ -902,9 +886,7 @@ namespace OpenTween
         /// </remarks>
         /// <returns>アプリケーションのアセンブリ名</returns>
         public static string GetAssemblyName()
-        {
-            return MyCommon.EntryAssembly.GetName().Name;
-        }
+            => MyCommon.EntryAssembly.GetName().Name;
 
         /// <summary>
         /// 文字列中に含まれる %AppName% をアプリケーション名に置換する
@@ -912,9 +894,7 @@ namespace OpenTween
         /// <param name="orig">対象となる文字列</param>
         /// <returns>置換後の文字列</returns>
         public static string ReplaceAppName(string orig)
-        {
-            return MyCommon.ReplaceAppName(orig, Application.ProductName);
-        }
+            => MyCommon.ReplaceAppName(orig, ApplicationSettings.ApplicationName);
 
         /// <summary>
         /// 文字列中に含まれる %AppName% をアプリケーション名に置換する
@@ -923,9 +903,7 @@ namespace OpenTween
         /// <param name="appname">アプリケーション名</param>
         /// <returns>置換後の文字列</returns>
         public static string ReplaceAppName(string orig, string appname)
-        {
-            return orig.Replace("%AppName%", appname);
-        }
+            => orig.Replace("%AppName%", appname);
 
         /// <summary>
         /// 表示用のバージョン番号の文字列を生成する
@@ -964,23 +942,10 @@ namespace OpenTween
             {
                 versionNum[2] = versionNum[2] + 1;
 
-                // 10を越えたら桁上げ
-                if (versionNum[2] >= 10)
-                {
-                    versionNum[1] += versionNum[2] / 10;
-                    versionNum[2] %= 10;
-
-                    if (versionNum[1] >= 10)
-                    {
-                        versionNum[0] += versionNum[1] / 10;
-                        versionNum[1] %= 10;
-                    }
-                }
-
                 if (versionNum[3] == 1)
                     return string.Format("{0}.{1}.{2}-dev", versionNum[0], versionNum[1], versionNum[2]);
                 else
-                    return string.Format("{0}.{1}.{2}-dev (Build {3})", versionNum[0], versionNum[1], versionNum[2], versionNum[3]);
+                    return string.Format("{0}.{1}.{2}-dev+build.{3}", versionNum[0], versionNum[1], versionNum[2], versionNum[3]);
             }
         }
 
@@ -995,9 +960,7 @@ namespace OpenTween
         }
 
         public static string GetStatusUrl(string screenName, long statusId)
-        {
-            return TwitterUrl + screenName + "/status/" + statusId;
-        }
+            => TwitterUrl + screenName + "/status/" + statusId;
 
         /// <summary>
         /// 指定された IDictionary を元にクエリ文字列を生成します
@@ -1069,6 +1032,40 @@ namespace OpenTween
         {
             for (var i = from; i >= to; i--)
                 yield return i;
+        }
+
+        public static IEnumerable<int> CircularCountUp(int length, int startIndex)
+        {
+            if (length < 1)
+                throw new ArgumentOutOfRangeException(nameof(length));
+            if (startIndex < 0 || startIndex >= length)
+                throw new ArgumentOutOfRangeException(nameof(startIndex));
+
+            // startindex ... 末尾
+            var indices = MyCommon.CountUp(startIndex, length - 1);
+
+            // 先頭 ... (startIndex - 1)
+            if (startIndex != 0)
+                indices = indices.Concat(MyCommon.CountUp(0, startIndex - 1));
+
+            return indices;
+        }
+
+        public static IEnumerable<int> CircularCountDown(int length, int startIndex)
+        {
+            if (length < 1)
+                throw new ArgumentOutOfRangeException(nameof(length));
+            if (startIndex < 0 || startIndex >= length)
+                throw new ArgumentOutOfRangeException(nameof(startIndex));
+
+            // startIndex ... 先頭
+            var indices = MyCommon.CountDown(startIndex, 0);
+
+            // 末尾 ... (startIndex + 1)
+            if (startIndex != length - 1)
+                indices = indices.Concat(MyCommon.CountDown(length - 1, startIndex + 1));
+
+            return indices;
         }
 
         /// <summary>

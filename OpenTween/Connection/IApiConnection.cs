@@ -40,6 +40,10 @@ namespace OpenTween.Connection
 
         Task<LazyJson<T>> PostLazyAsync<T>(Uri uri, IDictionary<string, string> param, IDictionary<string, IMediaItem> media);
 
+        Task PostAsync(Uri uri, IDictionary<string, string> param, IDictionary<string, IMediaItem> media);
+
         Task PostJsonAsync(Uri uri, string json);
+
+        Task DeleteAsync(Uri uri);
     }
 }

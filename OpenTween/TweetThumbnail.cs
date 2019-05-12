@@ -35,6 +35,7 @@ using System.Threading.Tasks;
 using OpenTween.Thumbnail;
 using System.Threading;
 using OpenTween.Models;
+using System.Runtime.InteropServices;
 
 namespace OpenTween
 {
@@ -48,19 +49,13 @@ namespace OpenTween
         public event EventHandler<ThumbnailImageSearchEventArgs> ThumbnailImageSearchClick;
 
         public ThumbnailInfo Thumbnail
-        {
-            get { return this.pictureBox[this.scrollBar.Value].Tag as ThumbnailInfo; }
-        }
+            => this.pictureBox[this.scrollBar.Value].Tag as ThumbnailInfo;
 
         public TweetThumbnail()
-        {
-            InitializeComponent();
-        }
+            => this.InitializeComponent();
 
         public Task ShowThumbnailAsync(PostClass post)
-        {
-            return this.ShowThumbnailAsync(post, CancellationToken.None);
-        }
+            => this.ShowThumbnailAsync(post, CancellationToken.None);
 
         public async Task ShowThumbnailAsync(PostClass post, CancellationToken cancelToken)
         {
@@ -117,19 +112,13 @@ namespace OpenTween
         }
 
         private string GetImageSearchUriGoogle(string image_uri)
-        {
-            return @"https://www.google.com/searchbyimage?image_url=" + Uri.EscapeDataString(image_uri);
-        }
+            => @"https://www.google.com/searchbyimage?image_url=" + Uri.EscapeDataString(image_uri);
 
         private string GetImageSearchUriSauceNao(string imageUri)
-        {
-            return @"https://saucenao.com/search.php?url=" + Uri.EscapeDataString(imageUri);
-        }
+            => @"https://saucenao.com/search.php?url=" + Uri.EscapeDataString(imageUri);
 
         protected virtual Task<IEnumerable<ThumbnailInfo>> GetThumbailInfoAsync(PostClass post, CancellationToken token)
-        {
-            return ThumbnailGenerator.GetThumbnailsAsync(post, token);
-        }
+            => ThumbnailGenerator.GetThumbnailsAsync(post, token);
 
         /// <summary>
         /// 表示するサムネイルの数を設定する
@@ -191,6 +180,9 @@ namespace OpenTween
             };
         }
 
+        public void OpenImage(ThumbnailInfo thumb)
+            => this.ThumbnailDoubleClick?.Invoke(this, new ThumbnailDoubleClickEventArgs(thumb));
+
         public void ScrollUp()
         {
             var newval = this.scrollBar.Value - this.scrollBar.SmallChange;
@@ -239,11 +231,8 @@ namespace OpenTween
 
         private void pictureBox_DoubleClick(object sender, EventArgs e)
         {
-            var thumb = ((PictureBox)sender).Tag as ThumbnailInfo;
-
-            if (thumb == null) return;
-
-            this.ThumbnailDoubleClick?.Invoke(this, new ThumbnailDoubleClickEventArgs(thumb));
+            if (((PictureBox)sender).Tag is ThumbnailInfo thumb)
+                this.OpenImage(thumb);
         }
 
         private void contextMenuStrip_Opening(object sender, CancelEventArgs e)
@@ -281,6 +270,21 @@ namespace OpenTween
 
             this.ThumbnailImageSearchClick?.Invoke(this, new ThumbnailImageSearchEventArgs(searchUri));
         }
+
+        private void openMenuItem_Click(object sender, EventArgs e)
+            => this.OpenImage(this.Thumbnail);
+
+        private void copyUrlMenuItem_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                Clipboard.SetText(this.Thumbnail.FullSizeImageUrl ?? this.Thumbnail.MediaPageUrl);
+            }
+            catch (ExternalException ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+        }
     }
 
     public class ThumbnailDoubleClickEventArgs : EventArgs
@@ -288,9 +292,7 @@ namespace OpenTween
         public ThumbnailInfo Thumbnail { get; }
 
         public ThumbnailDoubleClickEventArgs(ThumbnailInfo thumbnail)
-        {
-            this.Thumbnail = thumbnail;
-        }
+            => this.Thumbnail = thumbnail;
     }
 
     public class ThumbnailImageSearchEventArgs : EventArgs
@@ -298,8 +300,6 @@ namespace OpenTween
         public string ImageUrl { get; }
 
         public ThumbnailImageSearchEventArgs(string url)
-        {
-            this.ImageUrl = url;
-        }
+            => this.ImageUrl = url;
     }
 }

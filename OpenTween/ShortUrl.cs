@@ -51,9 +51,7 @@ namespace OpenTween
         /// ShortUrl のインスタンスを取得します
         /// </summary>
         public static ShortUrl Instance
-        {
-            get { return _instance.Value; }
-        }
+            => _instance.Value;
 
         /// <summary>
         /// 短縮 URL の展開を無効にするか否か
@@ -77,16 +75,12 @@ namespace OpenTween
         private static readonly HashSet<string> ShortUrlHosts = new HashSet<string>
         {
             "4sq.com",
-            "airme.us",
             "amzn.to",
-            "bctiny.com",
             "bit.ly",
-            "bkite.com",
             "blip.fm",
             "budurl.com",
+            "budurl.me",
             "buff.ly",
-            "cli.gs",
-            "digg.com",
             "disq.us",
             "dlvr.it",
             "fb.me",
@@ -97,38 +91,25 @@ namespace OpenTween
             "goo.gl",
             "ht.ly",
             "htn.to",
-            "icanhaz.com",
             "ift.tt",
             "is.gd",
             "j.mp",
-            "linkbee.com",
             "moby.to",
             "moi.st",
             "nico.ms",
-            "nsfw.in",
+            "on.digg.com",
             "on.fb.me",
             "ow.ly",
-            "p.tl",
-            "pic.gd",
             "qurl.com",
-            "rubyurl.com",
-            "snipurl.com",
-            "snurl.com",
             "t.co",
             "tinami.jp",
             "tiny.cc",
             "tinyurl.com",
             "tl.gd",
             "tmblr.co",
-            "traceurl.com",
             "tumblr.com",
-            "twitthis.com",
             "twme.jp",
-            "twurl.nl",
-            "u-rl.jp",
-            "urlenco.de",
             "urx2.nu",
-            "ustre.am",
             "ux.nu",
             "wp.me",
             "www.qurl.com",
@@ -136,10 +117,25 @@ namespace OpenTween
             "youtu.be",
         };
 
-        static ShortUrl()
+        /// <summary>
+        /// HTTPS非対応の短縮URLサービス
+        /// </summary>
+        private static readonly HashSet<string> InsecureDomains = new HashSet<string>
         {
-            _instance = new Lazy<ShortUrl>(() => new ShortUrl(), true);
-        }
+            "budurl.com",
+            "ff.im",
+            "ht.ly",
+            "htn.to",
+            "moi.st",
+            "ow.ly",
+            "tinami.jp",
+            "tl.gd",
+            "twme.jp",
+            "urx2.nu",
+        };
+
+        static ShortUrl()
+            => _instance = new Lazy<ShortUrl>(() => new ShortUrl(), true);
 
         [SuppressMessage("Microsoft.Reliability", "CA2000:DisposeObjectsBeforeLosingScope")]
         internal ShortUrl()
@@ -182,9 +178,7 @@ namespace OpenTween
         /// <param name="uri">展開するURL</param>
         /// <returns>URLの展開を行うタスク</returns>
         public Task<Uri> ExpandUrlAsync(Uri uri)
-        {
-            return this.ExpandUrlAsync(uri, 10);
-        }
+            => this.ExpandUrlAsync(uri, 10);
 
         /// <summary>
         /// 短縮 URL を非同期に展開します
@@ -252,9 +246,7 @@ namespace OpenTween
         /// <param name="uriStr">展開するURL</param>
         /// <returns>URLの展開を行うタスク</returns>
         public Task<string> ExpandUrlAsync(string uriStr)
-        {
-            return this.ExpandUrlAsync(uriStr, 10);
-        }
+            => this.ExpandUrlAsync(uriStr, 10);
 
         /// <summary>
         /// 短縮 URL を非同期に展開します
@@ -289,9 +281,7 @@ namespace OpenTween
 
         [Obsolete]
         public string ExpandUrlHtml(string html)
-        {
-            return this.ExpandUrlHtmlAsync(html, 10).Result;
-        }
+            => this.ExpandUrlHtmlAsync(html, 10).Result;
 
         /// <summary>
         /// HTML内に含まれるリンクのURLを非同期に展開する
@@ -299,9 +289,7 @@ namespace OpenTween
         /// <param name="html">処理対象のHTML</param>
         /// <returns>URLの展開を行うタスク</returns>
         public Task<string> ExpandUrlHtmlAsync(string html)
-        {
-            return this.ExpandUrlHtmlAsync(html, 10);
-        }
+            => this.ExpandUrlHtmlAsync(html, 10);
 
         /// <summary>
         /// HTML内に含まれるリンクのURLを非同期に展開する
@@ -340,9 +328,6 @@ namespace OpenTween
                     case MyCommon.UrlConverter.Isgd:
                         return await this.ShortenByIsgdAsync(srcUri)
                             .ConfigureAwait(false);
-                    case MyCommon.UrlConverter.Twurl:
-                        return await this.ShortenByTwurlAsync(srcUri)
-                            .ConfigureAwait(false);
                     case MyCommon.UrlConverter.Bitly:
                         return await this.ShortenByBitlyAsync(srcUri, "bit.ly")
                             .ConfigureAwait(false);
@@ -366,7 +351,7 @@ namespace OpenTween
         private async Task<Uri> ShortenByTinyUrlAsync(Uri srcUri)
         {
             // 明らかに長くなると推測できる場合は短縮しない
-            if ("http://tinyurl.com/xxxxxx".Length > srcUri.OriginalString.Length)
+            if ("https://tinyurl.com/xxxxxxxx".Length > srcUri.OriginalString.Length)
                 return srcUri;
 
             var content = new FormUrlEncodedContent(new[]
@@ -374,7 +359,7 @@ namespace OpenTween
                 new KeyValuePair<string, string>("url", srcUri.OriginalString),
             });
 
-            using (var response = await this.http.PostAsync("http://tinyurl.com/api-create.php", content).ConfigureAwait(false))
+            using (var response = await this.http.PostAsync("https://tinyurl.com/api-create.php", content).ConfigureAwait(false))
             {
                 response.EnsureSuccessStatusCode();
 
@@ -384,14 +369,14 @@ namespace OpenTween
                 if (!Regex.IsMatch(result, @"^https?://"))
                     throw new WebApiException("Failed to create URL.", result);
 
-                return new Uri(result.TrimEnd());
+                return this.UpgradeToHttpsIfAvailable(new Uri(result.TrimEnd()));
             }
         }
 
         private async Task<Uri> ShortenByIsgdAsync(Uri srcUri)
         {
             // 明らかに長くなると推測できる場合は短縮しない
-            if ("http://is.gd/xxxx".Length > srcUri.OriginalString.Length)
+            if ("https://is.gd/xxxxxx".Length > srcUri.OriginalString.Length)
                 return srcUri;
 
             var content = new FormUrlEncodedContent(new[]
@@ -400,32 +385,7 @@ namespace OpenTween
                 new KeyValuePair<string, string>("url", srcUri.OriginalString),
             });
 
-            using (var response = await this.http.PostAsync("http://is.gd/create.php", content).ConfigureAwait(false))
-            {
-                response.EnsureSuccessStatusCode();
-
-                var result = await response.Content.ReadAsStringAsync()
-                    .ConfigureAwait(false);
-
-                if (!Regex.IsMatch(result, @"^https?://"))
-                    throw new WebApiException("Failed to create URL.", result);
-
-                return new Uri(result.TrimEnd());
-            }
-        }
-
-        private async Task<Uri> ShortenByTwurlAsync(Uri srcUri)
-        {
-            // 明らかに長くなると推測できる場合は短縮しない
-            if ("http://twurl.nl/xxxxxx".Length > srcUri.OriginalString.Length)
-                return srcUri;
-
-            var content = new FormUrlEncodedContent(new[]
-            {
-                new KeyValuePair<string, string>("link[url]", srcUri.OriginalString),
-            });
-
-            using (var response = await this.http.PostAsync("http://tweetburner.com/links", content).ConfigureAwait(false))
+            using (var response = await this.http.PostAsync("https://is.gd/create.php", content).ConfigureAwait(false))
             {
                 response.EnsureSuccessStatusCode();
 
@@ -442,7 +402,7 @@ namespace OpenTween
         private async Task<Uri> ShortenByBitlyAsync(Uri srcUri, string domain = "bit.ly")
         {
             // 明らかに長くなると推測できる場合は短縮しない
-            if ("http://bit.ly/xxxx".Length > srcUri.OriginalString.Length)
+            if ("https://bit.ly/xxxxxxx".Length > srcUri.OriginalString.Length)
                 return srcUri;
 
             // OAuth2 アクセストークンまたは API キー (旧方式) のいずれも設定されていなければ短縮しない
@@ -456,14 +416,16 @@ namespace OpenTween
                 EndUserApiKey = this.BitlyKey,
             };
 
-            return await bitly.ShortenAsync(srcUri, domain)
+            var result = await bitly.ShortenAsync(srcUri, domain)
                 .ConfigureAwait(false);
+
+            return this.UpgradeToHttpsIfAvailable(result);
         }
 
         private async Task<Uri> ShortenByUxnuAsync(Uri srcUri)
         {
             // 明らかに長くなると推測できる場合は短縮しない
-            if ("http://ux.nx/xxxxxx".Length > srcUri.OriginalString.Length)
+            if ("https://ux.nu/xxxxx".Length > srcUri.OriginalString.Length)
                 return srcUri;
 
             var query = new Dictionary<string, string>
@@ -472,7 +434,7 @@ namespace OpenTween
                 ["url"] = srcUri.OriginalString,
             };
 
-            var uri = new Uri("http://ux.nu/api/short?" + MyCommon.BuildQueryString(query));
+            var uri = new Uri("https://ux.nu/api/short?" + MyCommon.BuildQueryString(query));
             using (var response = await this.http.GetAsync(uri).ConfigureAwait(false))
             {
                 response.EnsureSuccessStatusCode();
@@ -500,6 +462,8 @@ namespace OpenTween
 
         private async Task<Uri> GetRedirectTo(Uri url)
         {
+            url = this.UpgradeToHttpsIfAvailable(url);
+
             var request = new HttpRequestMessage(HttpMethod.Head, url);
 
             using (var response = await this.http.SendAsync(request).ConfigureAwait(false))
@@ -527,6 +491,24 @@ namespace OpenTween
                 else
                     return new Uri(url, redirectedUrl);
             }
+        }
+
+        /// <summary>
+        /// 指定されたURLのスキームを https:// に書き換える
+        /// </summary>
+        private Uri UpgradeToHttpsIfAvailable(Uri original)
+        {
+            if (original.Scheme != "http")
+                return original;
+
+            if (InsecureDomains.Contains(original.Host))
+                return original;
+
+            var builder = new UriBuilder(original);
+            builder.Scheme = "https";
+            builder.Port = 443;
+
+            return builder.Uri;
         }
 
         [SuppressMessage("Microsoft.Reliability", "CA2000:DisposeObjectsBeforeLosingScope")]

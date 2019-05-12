@@ -23,6 +23,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Windows.Forms;
 
 namespace OpenTween
 {
@@ -34,6 +35,23 @@ namespace OpenTween
     /// </remarks>
     internal static class ApplicationSettings
     {
+        //=====================================================================
+        // アプリケーション情報
+
+        /// <summary>
+        /// アプリケーション名
+        /// </summary>
+        /// <remarks>
+        /// 派生版のアプリケーションでは名前にマルチバイト文字を含む場合があります。
+        /// ファイル名など英数字のみを含めたい用途ではこのプロパティではなく <see cref="AssemblyName"/> を使用します
+        /// </remarks>
+        public static string ApplicationName => Application.ProductName;
+
+        /// <summary>
+        /// アセンブリ名
+        /// </summary>
+        public static string AssemblyName => MyCommon.GetAssemblyName();
+
         //=====================================================================
         // フィードバック送信先
         // 異常終了時などにエラーログ等とともに表示されます。
@@ -62,7 +80,7 @@ namespace OpenTween
         /// <summary>
         /// 「ヘルプ」メニューの「(アプリ名) ウェブサイト」クリック時に外部ブラウザで表示する URL
         /// </summary>
-        public const string WebsiteUrl = "http://sourceforge.jp/projects/opentween/wiki/FrontPage";
+        public const string WebsiteUrl = "https://www.opentween.org/";
 
         /// <summary>
         /// 「ヘルプ」メニューの「ショートカットキー一覧」クリック時に外部ブラウザで表示する URL
@@ -70,7 +88,7 @@ namespace OpenTween
         /// <remarks>
         /// Tween の Wiki ページのコンテンツはプロプライエタリなため転載不可
         /// </remarks>
-        public const string ShortcutKeyUrl = "http://sourceforge.jp/projects/tween/wiki/%E3%82%B7%E3%83%A7%E3%83%BC%E3%83%88%E3%82%AB%E3%83%83%E3%83%88%E3%82%AD%E3%83%BC";
+        public const string ShortcutKeyUrl = "https://ja.osdn.net/projects/tween/wiki/%E3%82%B7%E3%83%A7%E3%83%BC%E3%83%88%E3%82%AB%E3%83%83%E3%83%88%E3%82%AD%E3%83%BC";
 
         //=====================================================================
         // アップデートチェック関連
@@ -82,7 +100,7 @@ namespace OpenTween
         /// version.txt のフォーマットについては http://sourceforge.jp/projects/opentween/wiki/VersionTxt を参照。
         /// 派生プロジェクトなどでこの機能を無効にする場合は null をセットして下さい。
         /// </remarks>
-        public static readonly string VersionInfoUrl = "http://www.opentween.org/status/version.txt";
+        public static readonly string VersionInfoUrl = "https://www.opentween.org/status/version.txt";
 
         //=====================================================================
         // Twitter
@@ -93,15 +111,6 @@ namespace OpenTween
         /// </summary>
         public const string TwitterConsumerKey = "TgHNMa7WZE7Cxi1JbkAMQ";
         public const string TwitterConsumerSecret = "SHy9mBMBPNj3Y17et9BF4g5XeqS4y3vkeW24PttDcY";
-
-        //=====================================================================
-        // yfrog
-        // http://stream.imageshack.us/api/ から取得できます。
-
-        /// <summary>
-        /// yfrog APIキー
-        /// </summary>
-        public const string YfrogApiKey = "HIDP42ZO6314ee2218e2995662bad5ae320c32f1";
 
         //=====================================================================
         // Foursquare

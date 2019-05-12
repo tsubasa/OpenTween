@@ -124,7 +124,6 @@ namespace OpenTween
                     },
                     Type = "photo",
                     Id = 426404550379986940L,
-                    MediaUrl = "http://pbs.twimg.com/media/BerkrewCYAAV4Kf.png",
                     MediaUrlHttps = "https://pbs.twimg.com/media/BerkrewCYAAV4Kf.png",
                     Url = "http://t.co/h5dCr4ftN4",
                     DisplayUrl = "pic.twitter.com/h5dCr4ftN4",
@@ -154,7 +153,6 @@ namespace OpenTween
                     },
                     Type = "photo",
                     Id = 426404550379986940L,
-                    MediaUrl = "http://pbs.twimg.com/media/BerkrewCYAAV4Kf.png",
                     MediaUrlHttps = "https://pbs.twimg.com/media/BerkrewCYAAV4Kf.png",
                     Url = "http://t.co/h5dCr4ftN4",
                     DisplayUrl = "pic.twitter.com/h5dCr4ftN4",
@@ -167,6 +165,24 @@ namespace OpenTween
             Assert.Equal(expected, TweetFormatter.AutoLinkHtml(text, entities));
         }
 
+
+        [Fact]
+        public void FormatEmojiEntity_Test()
+        {
+            var text = "🍣";
+            var entities = new[]
+            {
+                new TwitterEntityEmoji
+                {
+                    Indices = new[] { 0, 1 },
+                    Text = "🍣",
+                    Url = "https://twemoji.maxcdn.com/2/72x72/1f363.png",
+                },
+            };
+
+            var expected = "<img class=\"emoji\" src=\"https://twemoji.maxcdn.com/2/72x72/1f363.png\" alt=\"🍣\" />";
+            Assert.Equal(expected, TweetFormatter.AutoLinkHtml(text, entities));
+        }
         [Fact]
         public void AutoLinkHtml_EntityNullTest()
         {

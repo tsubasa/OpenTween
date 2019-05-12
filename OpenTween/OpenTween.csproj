@@ -1,18 +1,15 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>8.0.30703</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{3D8995C7-BDF3-4273-9F9D-DDD902F6A101}</ProjectGuid>
     <OutputType>WinExe</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>OpenTween</RootNamespace>
     <AssemblyName>OpenTween</AssemblyName>
-    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -76,6 +73,7 @@
     <Compile Include="Api\DataModel\TwitterError.cs" />
     <Compile Include="Api\DataModel\TwitterFriendship.cs" />
     <Compile Include="Api\DataModel\TwitterList.cs" />
+    <Compile Include="Api\DataModel\TwitterMessageEvent.cs" />
     <Compile Include="Api\DataModel\TwitterPageable.cs">
       <SubType>Code</SubType>
     </Compile>
@@ -84,13 +82,17 @@
     <Compile Include="Api\DataModel\TwitterSearchResult.cs" />
     <Compile Include="Api\DataModel\TwitterStatus.cs" />
     <Compile Include="Api\DataModel\TwitterStreamEvent.cs" />
+    <Compile Include="Api\DataModel\TwitterStreamMessage.cs" />
+    <Compile Include="Api\DataModel\TwitterTextConfiguration.cs" />
     <Compile Include="Api\DataModel\TwitterUploadMediaResult.cs" />
     <Compile Include="Api\DataModel\TwitterUser.cs" />
     <Compile Include="Api\DataModel\TwitterApiAccessLevel.cs" />
+    <Compile Include="Api\JsonUtils.cs" />
     <Compile Include="Api\MicrosoftTranslatorApi.cs" />
     <Compile Include="Api\TwitterApi.cs" />
     <Compile Include="Api\TwitterApiException.cs" />
     <Compile Include="Api\TwitterApiStatus.cs" />
+    <Compile Include="Api\TwitterStreamObservable.cs" />
     <Compile Include="ApplicationEvents.cs">
       <SubType>Code</SubType>
     </Compile>
@@ -116,7 +118,6 @@
     <Compile Include="Bing.cs" />
     <Compile Include="Connection\IApiConnection.cs" />
     <Compile Include="Connection\IMediaUploadService.cs" />
-    <Compile Include="Connection\imgly.cs" />
     <Compile Include="Connection\Imgur.cs" />
     <Compile Include="Connection\LazyJson.cs" />
     <Compile Include="Connection\Mobypicture.cs" />
@@ -124,9 +125,8 @@
     <Compile Include="Connection\OAuthEchoHandler.cs" />
     <Compile Include="Connection\OAuthHandler.cs" />
     <Compile Include="Connection\OAuthUtility.cs" />
-    <Compile Include="Connection\TwipplePhoto.cs" />
     <Compile Include="Connection\TwitterApiConnection.cs" />
-    <Compile Include="EmojiFormatter.cs" />
+    <Compile Include="DateTimeUtc.cs" />
     <Compile Include="EventViewerDialog.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -168,6 +168,7 @@
     <Compile Include="Models\UserTimelineTabModel.cs" />
     <Compile Include="MouseWheelMessageFilter.cs" />
     <Compile Include="NotifyPropertyChangedBase.cs" />
+    <Compile Include="PostStatusParams.cs" />
     <Compile Include="ReaderWriterLockTransaction.cs" />
     <Compile Include="SendErrorReportForm.cs">
       <SubType>Form</SubType>
@@ -177,6 +178,7 @@
     </Compile>
     <Compile Include="Setting\SettingManager.cs" />
     <Compile Include="ShortcutCommand.cs" />
+    <Compile Include="ThrottlingTimer.cs" />
     <Compile Include="Thumbnail\Services\PbsTwimgCom.cs" />
     <Compile Include="TweetDetailsView.cs">
       <SubType>UserControl</SubType>
@@ -185,7 +187,6 @@
       <DependentUpon>TweetDetailsView.cs</DependentUpon>
     </Compile>
     <Compile Include="TweetExtractor.cs" />
-    <Compile Include="ValueTuple.cs" />
     <Compile Include="WaitingDialog.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -234,7 +235,6 @@
       <DependentUpon>ListManage.cs</DependentUpon>
     </Compile>
     <Compile Include="Connection\TwitterPhoto.cs" />
-    <Compile Include="Connection\yfrog.cs" />
     <Compile Include="DetailsListView.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -358,7 +358,6 @@
     <Compile Include="Thumbnail\Services\TonTwitterCom.cs" />
     <Compile Include="Thumbnail\Services\Tumblr.cs" />
     <Compile Include="Thumbnail\Services\TwitterComVideo.cs" />
-    <Compile Include="Thumbnail\Services\ViaMe.cs" />
     <Compile Include="Thumbnail\Services\Vimeo.cs" />
     <Compile Include="Thumbnail\Services\Youtube.cs" />
     <Compile Include="Thumbnail\ThumbnailGenerator.cs" />

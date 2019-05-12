@@ -45,7 +45,7 @@ namespace OpenTween.Connection
             this.MyCommonSetup();
         }
 
-        public void MyCommonSetup()
+        private void MyCommonSetup()
         {
             var mockAssembly = new Mock<_Assembly>();
             mockAssembly.Setup(m => m.GetName()).Returns(new AssemblyName("OpenTween"));
@@ -170,8 +170,8 @@ namespace OpenTween.Connection
                 await apiConnection.GetAsync<string>(endpoint, null, endpointName: "/hoge/tetete")
                     .ConfigureAwait(false);
 
-                Assert.Equal(apiStatus.AccessLevel, TwitterApiAccessLevel.ReadWriteAndDirectMessage);
-                Assert.Equal(apiStatus.AccessLimit["/hoge/tetete"], new ApiLimit(150, 100, new DateTime(2013, 1, 1, 0, 0, 0, DateTimeKind.Utc).ToLocalTime()));
+                Assert.Equal(TwitterApiAccessLevel.ReadWriteAndDirectMessage, apiStatus.AccessLevel);
+                Assert.Equal(new ApiLimit(150, 100, new DateTimeUtc(2013, 1, 1, 0, 0, 0)), apiStatus.AccessLimit["/hoge/tetete"]);
 
                 Assert.Equal(0, mockHandler.QueueCount);
             }
@@ -488,6 +488,33 @@ namespace OpenTween.Connection
                 var endpoint = new Uri("hoge/tetete.json", UriKind.Relative);
 
                 await apiConnection.PostJsonAsync(endpoint, "{\"aaaa\": 1111}")
+                    .ConfigureAwait(false);
+
+                Assert.Equal(0, mockHandler.QueueCount);
+            }
+        }
+
+        [Fact]
+        public async Task DeleteAsync_Test()
+        {
+            using (var mockHandler = new HttpMessageHandlerMock())
+            using (var http = new HttpClient(mockHandler))
+            using (var apiConnection = new TwitterApiConnection("", ""))
+            {
+                apiConnection.http = http;
+
+                mockHandler.Enqueue(x =>
+                {
+                    Assert.Equal(HttpMethod.Delete, x.Method);
+                    Assert.Equal("https://api.twitter.com/1.1/hoge/tetete.json",
+                        x.RequestUri.AbsoluteUri);
+
+                    return new HttpResponseMessage(HttpStatusCode.NoContent);
+                });
+
+                var endpoint = new Uri("hoge/tetete.json", UriKind.Relative);
+
+                await apiConnection.DeleteAsync(endpoint)
                     .ConfigureAwait(false);
 
                 Assert.Equal(0, mockHandler.QueueCount);

@@ -35,9 +35,7 @@ namespace OpenTween
     public partial class ApiInfoDialog : OTBaseForm
     {
         public ApiInfoDialog()
-        {
-            InitializeComponent();
-        }
+            => this.InitializeComponent();
 
         private readonly List<string> _tlEndpoints = new List<string>
         {
@@ -46,6 +44,7 @@ namespace OpenTween
             "/statuses/show/:id",
             "/statuses/user_timeline",
             "/favorites/list",
+            "/direct_messages/events/list",
             "/direct_messages",
             "/direct_messages/sent",
             "/lists/statuses",
@@ -75,13 +74,17 @@ namespace OpenTween
 
         private void AddListViewItem(string endpoint, ApiLimit apiLimit, ListViewGroup group)
         {
-            var item = new ListViewItem(
-                new string[] {
-                    endpoint,
-                    apiLimit.AccessLimitRemain + "/" + apiLimit.AccessLimitCount,
-                    apiLimit.AccessLimitResetDate.ToString()
-                });
-            item.Group = group;
+            var subitems = new[]
+            {
+                endpoint,
+                apiLimit.AccessLimitRemain + "/" + apiLimit.AccessLimitCount,
+                apiLimit.AccessLimitResetDate.ToLocalTimeString(),
+            };
+            var item = new ListViewItem(subitems)
+            {
+                Group = group,
+            };
+
             this.ListViewApi.Items.Add(item);
         }
 
@@ -92,7 +95,7 @@ namespace OpenTween
             {
                 var apiLimit = MyCommon.TwitterApiInfo.AccessLimit[endpoint];
                 item.SubItems[1].Text = apiLimit.AccessLimitRemain + "/" + apiLimit.AccessLimitCount;
-                item.SubItems[2].Text = apiLimit.AccessLimitResetDate.ToString();
+                item.SubItems[2].Text = apiLimit.AccessLimitResetDate.ToLocalTimeString();
             }
         }
 
@@ -121,9 +124,7 @@ namespace OpenTween
         }
 
         private void ApiInfoDialog_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            MyCommon.TwitterApiInfo.AccessLimitUpdated -= this.TwitterApiStatus_AccessLimitUpdated;
-        }
+            => MyCommon.TwitterApiInfo.AccessLimitUpdated -= this.TwitterApiStatus_AccessLimitUpdated;
 
         protected override void ScaleControl(SizeF factor, BoundsSpecified specified)
         {
@@ -136,8 +137,6 @@ namespace OpenTween
     public class BufferedListView : ListView
     {
         public BufferedListView()
-        {
-            DoubleBuffered = true;
-        }
+            => this.DoubleBuffered = true;
     }
 }

@@ -40,33 +40,24 @@ namespace OpenTween.Connection
         /// <summary>
         /// 通信に使用するプロキシの種類
         /// </summary>
-        public static ProxyType ProxyType
-        {
-            get { return proxyType; }
-        }
+        public static ProxyType ProxyType { get; private set; } = ProxyType.IE;
 
         /// <summary>
         /// 通信に使用するプロキシ
         /// </summary>
-        public static IWebProxy Proxy
-        {
-            get { return proxy; }
-        }
+        public static IWebProxy Proxy { get; private set; } = null;
 
         /// <summary>
         /// OpenTween 内で共通して使用する HttpClient インスタンス
         /// </summary>
-        public static HttpClient Http
-        {
-            get { return globalHttpClient; }
-        }
+        public static HttpClient Http => globalHttpClient;
 
         /// <summary>
         /// pbs.twimg.com で IPv4 を強制的に使用する
         /// </summary>
         public static bool ForceIPv4
         {
-            get { return forceIPv4; }
+            get => forceIPv4;
             set
             {
                 if (forceIPv4 == value)
@@ -79,6 +70,15 @@ namespace OpenTween.Connection
             }
         }
 
+        private static bool IsWindows7
+        {
+            get
+            {
+                var os = Environment.OSVersion;
+                return os.Platform == PlatformID.Win32NT && os.Version.Major == 6 && os.Version.Minor == 1;
+            }
+        }
+
         /// <summary>
         /// Webプロキシの設定が変更された場合に発生します
         /// </summary>
@@ -86,8 +86,6 @@ namespace OpenTween.Connection
 
         private static bool initialized = false;
         private static HttpClient globalHttpClient;
-        private static ProxyType proxyType = ProxyType.IE;
-        private static IWebProxy proxy = null;
         private static bool forceIPv4 = false;
 
         [SuppressMessage("Microsoft.Reliability", "CA2000:DisposeObjectsBeforeLosingScope")]
@@ -106,6 +104,11 @@ namespace OpenTween.Connection
             Networking.initialized = true;
 
             ServicePointManager.Expect100Continue = false;
+            ServicePointManager.CheckCertificateRevocationList = true;
+
+            // Win7 では SystemDefault が SSL3.0 または TLS1.0 のため、明示的にバージョンを引き上げる必要がある
+            if (IsWindows7)
+                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
         }
 
         public static void SetWebProxy(ProxyType proxyType, string proxyAddress, int proxyPort,
@@ -128,8 +131,8 @@ namespace OpenTween.Connection
                     break;
             }
 
-            Networking.proxyType = proxyType;
-            Networking.proxy = proxy;
+            Networking.ProxyType = proxyType;
+            Networking.Proxy = proxy;
 
             NativeMethods.SetProxy(proxyType, proxyAddress, proxyPort, proxyUser, proxyPassword);
 
@@ -185,9 +188,9 @@ namespace OpenTween.Connection
         public static string GetUserAgentString(bool fakeMSIE = false)
         {
             if (fakeMSIE)
-                return MyCommon.GetAssemblyName() + "/" + MyCommon.FileVersion + " (compatible; MSIE 10.0)";
+                return ApplicationSettings.AssemblyName + "/" + MyCommon.FileVersion + " (compatible; MSIE 10.0)";
             else
-                return MyCommon.GetAssemblyName() + "/" + MyCommon.FileVersion;
+                return ApplicationSettings.AssemblyName + "/" + MyCommon.FileVersion;
         }
 
         /// <summary>

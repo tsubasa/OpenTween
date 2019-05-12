@@ -45,15 +45,13 @@ namespace OpenTween
         private readonly string contextScreenName;
 
         /// <summary>自分が所有しているリスト</summary>
-        private ListElement[] ownedLists = new ListElement[0];
+        private ListElement[] ownedLists = Array.Empty<ListElement>();
 
         /// <summary>操作対象のユーザーが追加されているリストのID</summary>
-        private long[] addedListIds = new long[0];
+        private long[] addedListIds = Array.Empty<long>();
 
         public MyLists()
-        {
-            InitializeComponent();
-        }
+            => this.InitializeComponent();
 
         public MyLists(string screenName, TwitterApi twitterApi)
         {
@@ -202,9 +200,7 @@ namespace OpenTween
         }
 
         private void ContextMenuStrip1_Opening(object sender, CancelEventArgs e)
-        {
-            e.Cancel = this.ListsCheckedListBox.SelectedItem == null;
-        }
+            => e.Cancel = this.ListsCheckedListBox.SelectedItem == null;
 
         private async void MenuItemAdd_Click(object sender, EventArgs e)
         {
@@ -255,8 +251,6 @@ namespace OpenTween
         }
 
         private void CloseButton_Click(object sender, EventArgs e)
-        {
-            this.Close();
-        }
+            => this.Close();
     }
 }

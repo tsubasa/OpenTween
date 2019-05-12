@@ -51,7 +51,7 @@ namespace OpenTween
         [RefreshProperties(RefreshProperties.Repaint)]
         public int GaugeHeight
         {
-            get { return this._GaugeHeight; }
+            get => this._GaugeHeight;
             set
             {
                 this._GaugeHeight = value;
@@ -68,7 +68,7 @@ namespace OpenTween
         [Browsable(false)]
         public ApiLimit ApiLimit
         {
-            get { return this._ApiLimit; }
+            get => this._ApiLimit;
             private set
             {
                 this._ApiLimit = value;
@@ -87,7 +87,7 @@ namespace OpenTween
         [Browsable(false)]
         public string ApiEndpoint
         {
-            get { return this._ApiEndpoint; }
+            get => this._ApiEndpoint;
             set
             {
                 if (string.IsNullOrEmpty(value))
@@ -148,7 +148,7 @@ namespace OpenTween
         protected virtual void UpdateRemainMinutes()
         {
             if (this._ApiLimit != null)
-                this.remainMinutes = (this._ApiLimit.AccessLimitResetDate - DateTime.Now).TotalMinutes;
+                this.remainMinutes = (this._ApiLimit.AccessLimitResetDate - DateTimeUtc.Now).TotalMinutes;
             else
                 this.remainMinutes = -1;
         }

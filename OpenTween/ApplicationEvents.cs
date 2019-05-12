@@ -65,8 +65,8 @@ namespace OpenTween
 
             if (!CheckRuntimeVersion())
             {
-                var message = string.Format(Properties.Resources.CheckRuntimeVersion_Error, ".NET Framework 4.5.1");
-                MessageBox.Show(message, Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                var message = string.Format(Properties.Resources.CheckRuntimeVersion_Error, ".NET Framework 4.7.2");
+                MessageBox.Show(message, ApplicationSettings.ApplicationName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 1;
             }
 
@@ -80,12 +80,12 @@ namespace OpenTween
             InitCulture();
 
             // 同じ設定ファイルを使用する OpenTween プロセスの二重起動を防止する
-            string pt = MyCommon.settingPath.Replace("\\", "/") + "/" + Application.ProductName;
+            string pt = MyCommon.settingPath.Replace("\\", "/") + "/" + ApplicationSettings.AssemblyName;
             using (Mutex mt = new Mutex(false, pt))
             {
                 if (!mt.WaitOne(0, false))
                 {
-                    var text = string.Format(MyCommon.ReplaceAppName(Properties.Resources.StartupText1), MyCommon.GetAssemblyName());
+                    var text = string.Format(MyCommon.ReplaceAppName(Properties.Resources.StartupText1), ApplicationSettings.AssemblyName);
                     MessageBox.Show(text, MyCommon.ReplaceAppName(Properties.Resources.StartupText2), MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                     TryActivatePreviousWindow();
@@ -129,8 +129,8 @@ namespace OpenTween
                 var principal = new WindowsPrincipal(currentIdentity);
                 if (principal.IsInRole(WindowsBuiltInRole.Administrator))
                 {
-                    var message = string.Format(Properties.Resources.WarnIfRunAsAdministrator_Message, Application.ProductName);
-                    MessageBox.Show(message, Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    var message = string.Format(Properties.Resources.WarnIfRunAsAdministrator_Message, ApplicationSettings.ApplicationName);
+                    MessageBox.Show(message, ApplicationSettings.ApplicationName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
         }
@@ -144,14 +144,14 @@ namespace OpenTween
             if (Type.GetType("Mono.Runtime", false) != null)
                 return true;
 
-            // .NET Framework 4.5.1 以降で動作しているかチェックする
-            // 参照: http://msdn.microsoft.com/en-us/library/hh925568%28v=vs.110%29.aspx
+            // .NET Framework 4.7.2 以降で動作しているかチェックする
+            // 参照: https://docs.microsoft.com/en-us/dotnet/framework/migration-guide/how-to-determine-which-versions-are-installed
 
             using (var lmKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32))
             using (var ndpKey = lmKey.OpenSubKey(@"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\"))
             {
                 var releaseKey = (int)ndpKey.GetValue("Release");
-                return releaseKey >= 378675;
+                return releaseKey >= 461808;
             }
         }
 
@@ -181,7 +181,7 @@ namespace OpenTween
                 return;
             }
 
-            IntPtr windowHandle = NativeMethods.GetWindowHandle((uint)prevProcess.Id, Application.ProductName);
+            IntPtr windowHandle = NativeMethods.GetWindowHandle((uint)prevProcess.Id, ApplicationSettings.ApplicationName);
             if (windowHandle != IntPtr.Zero)
             {
                 NativeMethods.SetActiveWindow(windowHandle);
@@ -205,10 +205,52 @@ namespace OpenTween
 
         private static void OnUnhandledException(Exception ex)
         {
+            if (CheckIgnorableError(ex))
+                return;
+
             if (MyCommon.ExceptionOut(ex))
             {
                 Application.Exit();
             }
+        }
+
+        /// <summary>
+        /// 無視しても問題のない既知の例外であれば true を返す
+        /// </summary>
+        private static bool CheckIgnorableError(Exception ex)
+        {
+#if DEBUG
+            return false;
+#else
+            if (ex is AggregateException aggregated)
+            {
+                if (aggregated.InnerExceptions.Count != 1)
+                    return false;
+
+                ex = aggregated.InnerExceptions.Single();
+            }
+
+            switch (ex)
+            {
+                case System.Net.WebException webEx:
+                    // SSL/TLS のネゴシエーションに失敗した場合に発生する。なぜかキャッチできない例外
+                    // https://osdn.net/ticket/browse.php?group_id=6526&tid=37432
+                    if (webEx.Status == System.Net.WebExceptionStatus.SecureChannelFailure)
+                        return true;
+                    break;
+                case System.Threading.Tasks.TaskCanceledException cancelEx:
+                    // ton.twitter.com の画像でタイムアウトした場合、try-catch で例外がキャッチできない
+                    // https://osdn.net/ticket/browse.php?group_id=6526&tid=37433
+                    var stackTrace = new System.Diagnostics.StackTrace(cancelEx);
+                    var lastFrameMethod = stackTrace.GetFrame(stackTrace.FrameCount - 1).GetMethod();
+                    if (lastFrameMethod.ReflectedType == typeof(Connection.TwitterApiConnection) &&
+                        lastFrameMethod.Name == nameof(Connection.TwitterApiConnection.GetStreamAsync))
+                        return true;
+                    break;
+            }
+
+            return false;
+#endif
         }
 
         public static void InitCulture()
@@ -249,7 +291,7 @@ namespace OpenTween
                 if (!Directory.Exists(configDir))
                 {
                     var text = string.Format(Properties.Resources.ConfigDirectoryNotExist, configDir);
-                    MessageBox.Show(text, Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(text, ApplicationSettings.ApplicationName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
 
@@ -275,7 +317,7 @@ namespace OpenTween
                     var roamingDir = Path.Combine(new[]
                     {
                         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                        Application.ProductName,
+                        ApplicationSettings.ApplicationName,
                     });
                     Directory.CreateDirectory(roamingDir);
 
@@ -317,7 +359,7 @@ namespace OpenTween
                         {
                             // StartupPath に設定ファイルが存在し、Roaming 内のファイルよりも新しい場合のみ警告を表示する
                             var message = string.Format(Properties.Resources.SettingPath_Relocation, Application.StartupPath, MyCommon.settingPath);
-                            MessageBox.Show(message, Application.ProductName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            MessageBox.Show(message, ApplicationSettings.ApplicationName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
 
                         // Roaming に設定ファイルを作成 (StartupPath に読み込みに成功した設定ファイルがあれば内容がコピーされる)

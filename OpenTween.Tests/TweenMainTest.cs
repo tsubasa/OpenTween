@@ -75,7 +75,7 @@ namespace OpenTween
         [Fact]
         public void GetUrlFromDataObject_UnknownFormatTest()
         {
-            using (var memstream = new MemoryStream(new byte[0]))
+            using (var memstream = new MemoryStream(Array.Empty<byte>()))
             {
                 var data = new DataObject("application/x-hogehoge", memstream);
 
@@ -165,5 +165,14 @@ namespace OpenTween
             var expected = "#てすと @TwitterAPI " + Environment.NewLine + " http://twitter.com/";
             Assert.Equal(expected, TweenMain.CreateRetweetUnofficial(html, true));
         }
+
+        [Theory]
+        [InlineData("", true)]
+        [InlineData("hoge", false)]
+        [InlineData("@twitterapi ", true)]
+        [InlineData("@twitterapi @opentween ", true)]
+        [InlineData("@twitterapi @opentween hoge", false)]
+        public void TextContainsOnlyMentions_Test(string input, bool expected)
+            => Assert.Equal(expected, TweenMain.TextContainsOnlyMentions(input));
     }
 }

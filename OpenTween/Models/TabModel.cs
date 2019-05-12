@@ -77,9 +77,7 @@ namespace OpenTween.Models
         private readonly object _lockObj = new object();
 
         protected TabModel(string tabName)
-        {
-            this.TabName = tabName;
-        }
+            => this.TabName = tabName;
 
         public abstract Task RefreshAsync(Twitter tw, bool backward, bool startup, IProgress<string> progress);
 
@@ -299,13 +297,10 @@ namespace OpenTween.Models
         /// <param name="statusId">変更するツイートのID</param>
         /// <param name="read">既読状態</param>
         /// <returns>既読状態に変化があれば true、変化がなければ false</returns>
-        internal bool SetReadState(long statusId, bool read)
+        internal virtual bool SetReadState(long statusId, bool read)
         {
             if (!this._ids.Contains(statusId))
                 throw new ArgumentOutOfRangeException(nameof(statusId));
-
-            if (this.IsInnerStorageTabType)
-                this.Posts[statusId].IsRead = read;
 
             if (read)
                 return this.unreadIds.Remove(statusId);
@@ -394,28 +389,12 @@ namespace OpenTween.Models
             if (this.AllCount == 0)
                 yield break;
 
-            var searchIndices = Enumerable.Empty<int>();
+            IEnumerable<int> searchIndices;
 
             if (!reverse)
-            {
-                // startindex ...末尾
-                if (startIndex != this.AllCount - 1)
-                    searchIndices = MyCommon.CountUp(startIndex, this.AllCount - 1);
-
-                // 先頭 ... (startIndex - 1)
-                if (startIndex != 0)
-                    searchIndices = searchIndices.Concat(MyCommon.CountUp(0, startIndex - 1));
-            }
+                searchIndices = MyCommon.CircularCountUp(this.AllCount, startIndex);
             else
-            {
-                // startIndex ... 先頭
-                if (startIndex != 0)
-                    searchIndices = MyCommon.CountDown(startIndex, 0);
-
-                // 末尾 ... (startIndex - 1)
-                if (startIndex != this.AllCount - 1)
-                    searchIndices = searchIndices.Concat(MyCommon.CountDown(this.AllCount - 1, startIndex - 1));
-            }
+                searchIndices = MyCommon.CircularCountDown(this.AllCount, startIndex);
 
             foreach (var index in searchIndices)
             {

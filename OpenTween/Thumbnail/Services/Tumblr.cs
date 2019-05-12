@@ -42,9 +42,8 @@ namespace OpenTween.Thumbnail.Services
             new Regex(@"^https?://(?<host>[^.]+\.tumblr\.com|tumblr\.[^.]+\.[^.]+)/post/(?<postId>[0-9]+)(/.*)?");
 
         protected HttpClient http
-        {
-            get { return this.localHttpClient ?? Networking.Http; }
-        }
+            => this.localHttpClient ?? Networking.Http;
+
         private readonly HttpClient localHttpClient;
 
         public Tumblr()
@@ -53,9 +52,7 @@ namespace OpenTween.Thumbnail.Services
         }
 
         public Tumblr(HttpClient http)
-        {
-            this.localHttpClient = http;
-        }
+            => this.localHttpClient = http;
 
         public override async Task<ThumbnailInfo> GetThumbnailInfoAsync(string url, PostClass post, CancellationToken token)
         {
@@ -100,7 +97,7 @@ namespace OpenTween.Thumbnail.Services
 
                 var item = xElm.XPathSelectElement("/response/posts/item[1]");
                 if (item == null)
-                    return new ThumbnailInfo[0];
+                    return Array.Empty<ThumbnailInfo>();
 
                 var postUrlElm = item.Element("post_url");
 

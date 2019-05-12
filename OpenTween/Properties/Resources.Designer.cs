@@ -19,7 +19,7 @@ namespace OpenTween.Properties {
     // または Visual Studio のようなツールを使用して自動生成されました。
     // メンバーを追加または削除するには、.ResX ファイルを編集して、/str オプションと共に
     // ResGen を実行し直すか、または VS プロジェクトをビルドし直します。
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "15.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     internal class Resources {
@@ -47,7 +47,7 @@ namespace OpenTween.Properties {
         }
         
         /// <summary>
-        ///   厳密に型指定されたこのリソース クラスを使用して、すべての検索リソースに対し、
+        ///   すべてについて、現在のスレッドの CurrentUICulture プロパティをオーバーライドします
         ///   現在のスレッドの CurrentUICulture プロパティをオーバーライドします。
         /// </summary>
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Advanced)]
@@ -652,19 +652,17 @@ namespace OpenTween.Properties {
         /// <summary>
         ///   更新履歴
         ///
-        ///==== Ver 1.3.9-dev(2017/xx/xx)
+        ///==== Ver 2.3.1(2019/04/22)
+        /// * FIX: 2019/5/20に予定されているTwitter APIの仕様変更によりエラーが発生する問題を修正
+        ///  - OpenTween v2.3.0 までのバージョンは2019/5/20以降に使用できなくなる可能性があります
+        /// * FIX: 絵文字を含むツイートの非公式RTで余分なHTMLタグが混入する不具合を修正 (thx @380Nayuta!)
         ///
-        ///==== Ver 1.3.8(2017/06/05)
-        /// * NEW: bit.ly の認証方式が変更されました
-        ///  - 短縮URLに bit.ly を使用する場合は、設定画面の「短縮URL」から bit.ly の「認可」ボタンを押して認証情報を入力して下さい
-        /// * CHG: 管理者権限での実行時に表示される警告(v1.3.7で追加)を、UACが無効化された環境では表示しないように変更しました
-        ///  - この変更はUACの無効化を推奨するものではありません
-        /// * FIX: Microsoft DataMarket廃止により翻訳機能が使用できなくなった不具合を修正
-        /// * FIX: DMの送信後に「OK:Delaying?」の警告が表示される不具合を修正 (thx @o_keiichi!)
-        ///
-        ///==== Ver 1.3.7(2017/03/20)
-        /// * NEW: PNG画像のアップロード時にJPEGへの変換による劣化を回避する機能を追加しました (pic.twitter.com のみ)
-        ///  - 設定画面の 動作→投稿 [残りの文字列は切り詰められました]&quot;; に類似しているローカライズされた文字列を検索します。
+        ///==== Ver 2.3.0(2019/04/08)
+        /// * CHG: 投稿欄にフォーカスしている間は一部のショートカットを無効にします (thx @pitermach, @lukaszgo1!)
+        ///  - 対象となるショートカットは Ctrl+Alt+S (Fav+RT), Ctrl+Alt+R (Fav+非公式RT), Ctrl+Alt+H (ユーザー指定のURLを開く) の3つです
+        ///  - AltGrキーを使う言語のキーボートとショートカットキーが重複する問題への対処です
+        /// * CHG: Microsoft Translator Text API v3 に対応
+        /// [残りの文字列は切り詰められました]&quot;; に類似しているローカライズされた文字列を検索します。
         /// </summary>
         internal static string ChangeLog {
             get {
@@ -1113,15 +1111,6 @@ namespace OpenTween.Properties {
         internal static string FavRemoveToolStripMenuItem_ClickText4 {
             get {
                 return ResourceManager.GetString("FavRemoveToolStripMenuItem_ClickText4", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   http://ja.favstar.fm/ に類似しているローカライズされた文字列を検索します。
-        /// </summary>
-        internal static string FavstarUrl {
-            get {
-                return ResourceManager.GetString("FavstarUrl", resourceCulture);
             }
         }
         
@@ -1833,6 +1822,16 @@ namespace OpenTween.Properties {
         }
         
         /// <summary>
+        ///   この内容で投稿してもよろしいですか？
+        ///{0} に類似しているローカライズされた文字列を検索します。
+        /// </summary>
+        internal static string PostConfirmText {
+            get {
+                return ResourceManager.GetString("PostConfirmText", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   投稿できる文字数の上限を越えています。強制的に投稿しますか？ に類似しているローカライズされた文字列を検索します。
         /// </summary>
         internal static string PostLengthOverMessage1 {
@@ -2289,7 +2288,7 @@ namespace OpenTween.Properties {
         }
         
         /// <summary>
-        ///   http://ja.wikipedia.org/wiki/{0} に類似しているローカライズされた文字列を検索します。
+        ///   https://ja.wikipedia.org/w/index.php?search={0} に類似しているローカライズされた文字列を検索します。
         /// </summary>
         internal static string SearchItem1Url {
             get {
@@ -2298,7 +2297,7 @@ namespace OpenTween.Properties {
         }
         
         /// <summary>
-        ///   http://www.google.com/search?hl=ja&amp;q={0} に類似しているローカライズされた文字列を検索します。
+        ///   https://www.google.com/search?hl=ja&amp;q={0} に類似しているローカライズされた文字列を検索します。
         /// </summary>
         internal static string SearchItem2Url {
             get {
@@ -2307,16 +2306,7 @@ namespace OpenTween.Properties {
         }
         
         /// <summary>
-        ///   http://yats-data.com/yats/search?query={0} に類似しているローカライズされた文字列を検索します。
-        /// </summary>
-        internal static string SearchItem3Url {
-            get {
-                return ResourceManager.GetString("SearchItem3Url", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   http://search.twitter.com/search?q={0} に類似しているローカライズされた文字列を検索します。
+        ///   https://twitter.com/search?q={0} に類似しているローカライズされた文字列を検索します。
         /// </summary>
         internal static string SearchItem4Url {
             get {

@@ -45,16 +45,12 @@ namespace OpenTween.Api
             public string EndpointName { get; }
 
             public AccessLimitUpdatedEventArgs(string endpointName)
-            {
-                this.EndpointName = endpointName;
-            }
+                => this.EndpointName = endpointName;
         }
         public event EventHandler<AccessLimitUpdatedEventArgs> AccessLimitUpdated;
 
         public TwitterApiStatus()
-        {
-            this.AccessLimit = new EndpointLimits(this);
-        }
+            => this.AccessLimit = new EndpointLimits(this);
 
         public void Reset()
         {
@@ -72,7 +68,7 @@ namespace OpenTween.Api
             if (limitCount == null || limitRemain == null || limitReset == null)
                 return null;
 
-            var limitResetDate = UnixEpoch.AddSeconds(limitReset.Value).ToLocalTime();
+            var limitResetDate = DateTimeUtc.FromUnixTime(limitReset.Value);
             return new ApiLimit(limitCount.Value, limitRemain.Value, limitResetDate);
         }
 
@@ -114,9 +110,7 @@ namespace OpenTween.Api
         }
 
         public void UpdateFromHeader(HttpResponseHeaders header, string endpointName)
-        {
-            this.UpdateFromHeader(header.ToDictionary(x => x.Key, x => string.Join(",", x.Value), StringComparer.OrdinalIgnoreCase), endpointName);
-        }
+            => this.UpdateFromHeader(header.ToDictionary(x => x.Key, x => string.Join(",", x.Value), StringComparer.OrdinalIgnoreCase), endpointName);
 
         public void UpdateFromHeader(IDictionary<string, string> header, string endpointName)
         {
@@ -133,8 +127,6 @@ namespace OpenTween.Api
                 this.AccessLevel = accessLevel.Value;
         }
 
-        private static readonly DateTime UnixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
         public void UpdateFromJson(TwitterRateLimits json)
         {
             var rateLimits =
@@ -145,7 +137,7 @@ namespace OpenTween.Api
                     Limit: new ApiLimit(
                         item.Value.Limit,
                         item.Value.Remaining,
-                        UnixEpoch.AddSeconds(item.Value.Reset).ToLocalTime()
+                        DateTimeUtc.FromUnixTime(item.Value.Reset)
                     )
                 );
 
@@ -153,9 +145,7 @@ namespace OpenTween.Api
         }
 
         protected virtual void OnAccessLimitUpdated(AccessLimitUpdatedEventArgs e)
-        {
-            this.AccessLimitUpdated?.Invoke(this, e);
-        }
+            => this.AccessLimitUpdated?.Invoke(this, e);
 
         public class EndpointLimits : IEnumerable<KeyValuePair<string, ApiLimit>>
         {
@@ -164,18 +154,11 @@ namespace OpenTween.Api
             private ConcurrentDictionary<string, ApiLimit> innerDict = new ConcurrentDictionary<string, ApiLimit>();
 
             public EndpointLimits(TwitterApiStatus owner)
-            {
-                this.Owner = owner;
-            }
+                => this.Owner = owner;
 
             public ApiLimit this[string endpoint]
             {
-                get
-                {
-                    return this.innerDict.TryGetValue(endpoint, out var limit)
-                        ? limit
-                        : null;
-                }
+                get => this.innerDict.TryGetValue(endpoint, out var limit) ? limit : null;
                 set
                 {
                     this.innerDict[endpoint] = value;
@@ -200,14 +183,10 @@ namespace OpenTween.Api
             }
 
             public IEnumerator<KeyValuePair<string, ApiLimit>> GetEnumerator()
-            {
-                return this.innerDict.GetEnumerator();
-            }
+                => this.innerDict.GetEnumerator();
 
             IEnumerator IEnumerable.GetEnumerator()
-            {
-                return this.GetEnumerator();
-            }
+                => this.GetEnumerator();
         }
     }
 }

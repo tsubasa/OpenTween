@@ -38,11 +38,6 @@ namespace OpenTween.Connection
     public static class OAuthUtility
     {
         /// <summary>
-        /// OAuth署名のoauth_timestamp算出用基準日付（1970/1/1 00:00:00）
-        /// </summary>
-        private static readonly DateTime UnixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);
-
-        /// <summary>
         /// OAuth署名のoauth_nonce算出用乱数クラス
         /// </summary>
         private static readonly Random NonceRandom = new Random();
@@ -91,12 +86,14 @@ namespace OpenTween.Connection
         /// <returns>OAuth情報のディクショナリ</returns>
         public static Dictionary<string, string> GetOAuthParameter(string consumerKey, string token)
         {
-            Dictionary<string, string> parameter = new Dictionary<string, string>();
-            parameter.Add("oauth_consumer_key", consumerKey);
-            parameter.Add("oauth_signature_method", "HMAC-SHA1");
-            parameter.Add("oauth_timestamp", Convert.ToInt64((DateTime.UtcNow - UnixEpoch).TotalSeconds).ToString()); // epoch秒
-            parameter.Add("oauth_nonce", NonceRandom.Next(123400, 9999999).ToString());
-            parameter.Add("oauth_version", "1.0");
+            var parameter = new Dictionary<string, string>
+            {
+                ["oauth_consumer_key"] = consumerKey,
+                ["oauth_signature_method"] = "HMAC-SHA1",
+                ["oauth_timestamp"] = DateTimeUtc.Now.ToUnixTime().ToString(), // epoch秒
+                ["oauth_nonce"] = NonceRandom.Next(123400, 9999999).ToString(),
+                ["oauth_version"] = "1.0",
+            };
             if (!string.IsNullOrEmpty(token))
                 parameter.Add("oauth_token", token); // トークンがあれば追加
             return parameter;

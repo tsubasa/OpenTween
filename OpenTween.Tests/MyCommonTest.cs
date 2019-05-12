@@ -122,27 +122,16 @@ namespace OpenTween
             Assert.Equal(expected, MyCommon.IsAnimatedGif(filename));
         }
 
-        public static IEnumerable<object[]> DateTimeParse_TestCase
+        public static TheoryData<string, DateTimeUtc> DateTimeParse_TestCase = new TheoryData<string, DateTimeUtc>
         {
-            get
-            {
-                yield return new object[] {
-                    "Sun Nov 25 06:10:00 +00:00 2012",
-                    new DateTime(2012, 11, 25, 6, 10, 0, DateTimeKind.Utc),
-                };
-                yield return new object[] {
-                    "Sun, 25 Nov 2012 06:10:00 +00:00",
-                    new DateTime(2012, 11, 25, 6, 10, 0, DateTimeKind.Utc),
-                };
-            }
-        }
+            { "Sun Nov 25 06:10:00 +00:00 2012", new DateTimeUtc(2012, 11, 25, 6, 10, 0) },
+            { "Sun, 25 Nov 2012 06:10:00 +00:00", new DateTimeUtc(2012, 11, 25, 6, 10, 0) },
+        };
 
         [Theory]
-        [MemberData("DateTimeParse_TestCase")]
-        public void DateTimeParseTest(string date, DateTime excepted)
-        {
-            Assert.Equal(excepted, MyCommon.DateTimeParse(date).ToUniversalTime());
-        }
+        [MemberData(nameof(DateTimeParse_TestCase))]
+        public void DateTimeParseTest(string date, DateTimeUtc excepted)
+            => Assert.Equal(excepted, MyCommon.DateTimeParse(date));
 
         [DataContract]
         public struct JsonData
@@ -162,7 +151,7 @@ namespace OpenTween
         }
 
         [Theory]
-        [MemberData("CreateDataFromJson_TestCase")]
+        [MemberData(nameof(CreateDataFromJson_TestCase))]
         public void CreateDataFromJsonTest<T>(string json, T expected)
         {
             Assert.Equal(expected, MyCommon.CreateDataFromJson<T>(json));
@@ -214,11 +203,11 @@ namespace OpenTween
         [Theory]
         [InlineData("1.0.0.0", "1.0.0")]
         [InlineData("1.0.0.1", "1.0.1-dev")]
-        [InlineData("1.0.0.12", "1.0.1-dev (Build 12)")]
+        [InlineData("1.0.0.12", "1.0.1-dev+build.12")]
         [InlineData("1.0.1.0", "1.0.1")]
-        [InlineData("1.0.9.1", "1.1.0-dev")]
+        [InlineData("1.0.9.1", "1.0.10-dev")]
         [InlineData("1.1.0.0", "1.1.0")]
-        [InlineData("1.9.9.1", "2.0.0-dev")]
+        [InlineData("1.9.9.1", "1.9.10-dev")]
         public void GetReadableVersionTest(string fileVersion, string expected)
         {
             Assert.Equal(expected, MyCommon.GetReadableVersion(fileVersion));
@@ -240,7 +229,7 @@ namespace OpenTween
         }
 
         [Theory]
-        [MemberData("GetStatusUrlTest1_TestCase")]
+        [MemberData(nameof(GetStatusUrlTest1_TestCase))]
         public void GetStatusUrlTest1(PostClass post, string expected)
         {
             Assert.Equal(expected, MyCommon.GetStatusUrl(post));
@@ -321,6 +310,38 @@ namespace OpenTween
             var actual = MyCommon.CountDown(from: 5, to: 6);
 
             Assert.Empty(actual);
+        }
+
+        [Fact]
+        public void CircularCountUp_Test()
+        {
+            var actual = MyCommon.CircularCountUp(length: 6, startIndex: 3);
+
+            Assert.Equal(new[] { 3, 4, 5, 0, 1, 2 }, actual);
+        }
+
+        [Fact]
+        public void CircularCountUp_StartFromZeroTest()
+        {
+            var actual = MyCommon.CircularCountUp(length: 6, startIndex: 0);
+
+            Assert.Equal(new[] { 0, 1, 2, 3, 4, 5 }, actual);
+        }
+
+        [Fact]
+        public void CircularCountDown_Test()
+        {
+            var actual = MyCommon.CircularCountDown(length: 6, startIndex: 3);
+
+            Assert.Equal(new[] { 3, 2, 1, 0, 5, 4 }, actual);
+        }
+
+        [Fact]
+        public void CircularCountDown_StartFromLastIndexTest()
+        {
+            var actual = MyCommon.CircularCountDown(length: 6, startIndex: 5);
+
+            Assert.Equal(new[] { 5, 4, 3, 2, 1, 0 }, actual);
         }
     }
 }

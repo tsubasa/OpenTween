@@ -41,19 +41,19 @@ namespace OpenTween.Api
         /// <summary>
         /// API 実行回数制限がリセットされる日時
         /// </summary>
-        public DateTime AccessLimitResetDate { get; }
+        public DateTimeUtc AccessLimitResetDate { get; }
 
         /// <summary>
         /// API 実行回数制限値を取得した日時
         /// </summary>
-        public DateTime UpdatedAt { get; }
+        public DateTimeUtc UpdatedAt { get; }
 
-        public ApiLimit(int limitCount, int limitRemain, DateTime resetDate)
-            : this(limitCount, limitRemain, resetDate, DateTime.Now)
+        public ApiLimit(int limitCount, int limitRemain, DateTimeUtc resetDate)
+            : this(limitCount, limitRemain, resetDate, DateTimeUtc.Now)
         {
         }
 
-        public ApiLimit(int limitCount, int limitRemain, DateTime resetDate, DateTime updatedAt)
+        public ApiLimit(int limitCount, int limitRemain, DateTimeUtc resetDate, DateTimeUtc updatedAt)
         {
             this.AccessLimitCount = limitCount;
             this.AccessLimitRemain = limitRemain;
@@ -62,21 +62,13 @@ namespace OpenTween.Api
         }
 
         public override bool Equals(object obj)
-        {
-            return this.Equals(obj as ApiLimit);
-        }
+            => this.Equals(obj as ApiLimit);
 
         public bool Equals(ApiLimit obj)
-        {
-            return obj != null &&
-                this.AccessLimitCount == obj.AccessLimitCount &&
-                this.AccessLimitRemain == obj.AccessLimitRemain &&
-                this.AccessLimitResetDate == obj.AccessLimitResetDate;
-        }
+            => obj != null && this.AccessLimitCount == obj.AccessLimitCount &&
+                this.AccessLimitRemain == obj.AccessLimitRemain && this.AccessLimitResetDate == obj.AccessLimitResetDate;
 
         public override int GetHashCode()
-        {
-            return this.AccessLimitCount ^ this.AccessLimitRemain ^ this.AccessLimitResetDate.GetHashCode();
-        }
+            => this.AccessLimitCount ^ this.AccessLimitRemain ^ this.AccessLimitResetDate.GetHashCode();
     }
 }

@@ -31,27 +31,20 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.CompilerServices;
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
-using System.Xml;
-using System.Xml.Linq;
-using System.Xml.XPath;
 using System;
 using System.Reflection;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Windows.Forms;
 using OpenTween.Api;
 using OpenTween.Api.DataModel;
 using OpenTween.Connection;
 using OpenTween.Models;
-using System.Drawing.Imaging;
 using OpenTween.Setting;
+using System.Globalization;
 
 namespace OpenTween
 {
@@ -133,6 +126,15 @@ namespace OpenTween
         public static readonly Regex StatusUrlRegex = new Regex(@"https?://([^.]+\.)?twitter\.com/(#!/)?(?<ScreenName>[a-zA-Z0-9_]+)/status(es)?/(?<StatusId>[0-9]+)(/photo)?", RegexOptions.IgnoreCase);
 
         /// <summary>
+        /// attachment_url に指定可能な URL を判定する正規表現
+        /// </summary>
+        public static readonly Regex AttachmentUrlRegex = new Regex(@"https?://(
+   twitter\.com/[0-9A-Za-z_]+/status/[0-9]+
+ | mobile\.twitter\.com/[0-9A-Za-z_]+/status/[0-9]+
+ | twitter\.com/messages/compose\?recipient_id=[0-9]+(&.+)?
+)$", RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace);
+
+        /// <summary>
         /// FavstarやaclogなどTwitter関連サービスのパーマリンクURLからステータスIDを抽出する正規表現
         /// </summary>
         public static readonly Regex ThirdPartyStatusUrlRegex = new Regex(@"https?://(?:[^.]+\.)?(?:
@@ -149,23 +151,20 @@ namespace OpenTween
 
         public TwitterApi Api { get; }
         public TwitterConfiguration Configuration { get; private set; }
+        public TwitterTextConfiguration TextConfiguration { get; private set; }
+
+        public bool GetFollowersSuccess { get; private set; } = false;
+        public bool GetNoRetweetSuccess { get; private set; } = false;
 
         delegate void GetIconImageDelegate(PostClass post);
         private readonly object LockObj = new object();
         private ISet<long> followerId = new HashSet<long>();
-        private bool _GetFollowerResult = false;
-        private long[] noRTId = new long[0];
-        private bool _GetNoRetweetResult = false;
+        private long[] noRTId = Array.Empty<long>();
 
         //プロパティからアクセスされる共通情報
-        private string _uname;
-
-        private bool _readOwnPost;
         private List<string> _hashList = new List<string>();
 
-        //max_idで古い発言を取得するために保持（lists分は個別タブで管理）
-        private long minDirectmessage = long.MaxValue;
-        private long minDirectmessageSent = long.MaxValue;
+        private string nextCursorDirectMessage = null;
 
         private long previousStatusId = -1L;
 
@@ -181,20 +180,14 @@ namespace OpenTween
         {
             this.Api = api;
             this.Configuration = TwitterConfiguration.DefaultConfiguration();
+            this.TextConfiguration = TwitterTextConfiguration.DefaultConfiguration();
         }
 
         public TwitterApiAccessLevel AccessLevel
-        {
-            get
-            {
-                return MyCommon.TwitterApiInfo.AccessLevel;
-            }
-        }
+            => MyCommon.TwitterApiInfo.AccessLevel;
 
         protected void ResetApiStatus()
-        {
-            MyCommon.TwitterApiInfo.Reset();
-        }
+            => MyCommon.TwitterApiInfo.Reset();
 
         public void ClearAuthInfo()
         {
@@ -232,11 +225,10 @@ namespace OpenTween
             }
             this.ResetApiStatus();
             this.Api.Initialize(token, tokenSecret, userId, username);
-            _uname = username.ToLowerInvariant();
             if (SettingManager.Common.UserstreamStartup) this.ReconnectUserStream();
         }
 
-        public string PreProcessUrl(string orgData)
+        internal static string PreProcessUrl(string orgData)
         {
             int posl1;
             var posl2 = 0;
@@ -276,18 +268,21 @@ namespace OpenTween
             return orgData;
         }
 
-        public async Task PostStatus(string postStr, long? reply_to, IReadOnlyList<long> mediaIds = null)
+        public async Task<PostClass> PostStatus(PostStatusParams param)
         {
             this.CheckAccountState();
 
-            if (Twitter.DMSendTextRegex.IsMatch(postStr))
+            if (Twitter.DMSendTextRegex.IsMatch(param.Text))
             {
-                await this.SendDirectMessage(postStr)
+                var mediaId = param.MediaIds != null && param.MediaIds.Any() ? param.MediaIds[0] : (long?)null;
+
+                await this.SendDirectMessage(param.Text, mediaId)
                     .ConfigureAwait(false);
-                return;
+                return null;
             }
 
-            var response = await this.Api.StatusesUpdate(postStr, reply_to, mediaIds)
+            var response = await this.Api.StatusesUpdate(param.Text, param.InReplyToStatusId, param.MediaIds,
+                    param.AutoPopulateReplyMetadata, param.ExcludeReplyUserIds, param.AttachmentUrl)
                 .ConfigureAwait(false);
 
             var status = await response.LoadJsonAsync()
@@ -299,98 +294,98 @@ namespace OpenTween
                 throw new WebApiException("OK:Delaying?");
 
             this.previousStatusId = status.Id;
+
+            //投稿したものを返す
+            var post = CreatePostsFromStatusData(status);
+            if (this.ReadOwnPost) post.IsRead = true;
+            return post;
         }
 
-        public Task<long> UploadMedia(IMediaItem item)
-            => this.UploadMedia(item, SettingManager.Common.AlphaPNGWorkaround);
-
-        public async Task<long> UploadMedia(IMediaItem item, bool alphaPNGWorkaround)
+        public async Task<long> UploadMedia(IMediaItem item, string mediaCategory = null)
         {
             this.CheckAccountState();
 
-            LazyJson<TwitterUploadMediaResult> response;
+            string mediaType;
 
-            using (var origImage = item.CreateImage())
+            switch (item.Extension)
             {
-                if (alphaPNGWorkaround && this.AddAlphaChannelIfNeeded(origImage.Image, out var newImage))
-                {
-                    using (var newMediaItem = new MemoryImageMediaItem(newImage))
-                    {
-                        response = await this.Api.MediaUpload(newMediaItem)
-                            .ConfigureAwait(false);
-                    }
-                }
-                else
-                {
-                    response = await this.Api.MediaUpload(item)
-                        .ConfigureAwait(false);
-                }
+                case ".png":
+                    mediaType = "image/png";
+                    break;
+                case ".jpg":
+                case ".jpeg":
+                    mediaType = "image/jpeg";
+                    break;
+                case ".gif":
+                    mediaType = "image/gif";
+                    break;
+                default:
+                    mediaType = "application/octet-stream";
+                    break;
             }
+
+            var initResponse = await this.Api.MediaUploadInit(item.Size, mediaType, mediaCategory)
+                .ConfigureAwait(false);
+
+            var initMedia = await initResponse.LoadJsonAsync()
+                .ConfigureAwait(false);
+
+            var mediaId = initMedia.MediaId;
+
+            await this.Api.MediaUploadAppend(mediaId, 0, item)
+                .ConfigureAwait(false);
+
+            var response = await this.Api.MediaUploadFinalize(mediaId)
+                .ConfigureAwait(false);
 
             var media = await response.LoadJsonAsync()
                 .ConfigureAwait(false);
 
+            while (media.ProcessingInfo is TwitterUploadMediaResult.MediaProcessingInfo processingInfo)
+            {
+                switch (processingInfo.State)
+                {
+                    case "pending":
+                        break;
+                    case "in_progress":
+                        break;
+                    case "succeeded":
+                        goto succeeded;
+                    case "failed":
+                        throw new WebApiException($"Err:Upload failed ({processingInfo.Error?.Name})");
+                    default:
+                        throw new WebApiException($"Err:Invalid state ({processingInfo.State})");
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(processingInfo.CheckAfterSecs ?? 5))
+                    .ConfigureAwait(false);
+
+                media = await this.Api.MediaUploadStatus(mediaId)
+                    .ConfigureAwait(false);
+            }
+
+            succeeded:
             return media.MediaId;
         }
 
-        /// <summary>
-        /// pic.twitter.com アップロード時に JPEG への変換を回避するための加工を行う
-        /// </summary>
-        /// <remarks>
-        /// pic.twitter.com へのアップロード時に、アルファチャンネルを持たない PNG 画像が
-        /// JPEG 形式に変換され画質が低下する問題を回避します。
-        /// PNG 以外の画像や、すでにアルファチャンネルを持つ PNG 画像に対しては何もしません。
-        /// </remarks>
-        /// <returns>加工が行われた場合は true、そうでない場合は false</returns>
-        private bool AddAlphaChannelIfNeeded(Image origImage, out MemoryImage newImage)
-        {
-            newImage = null;
-
-            // PNG 画像以外に対しては何もしない
-            if (origImage.RawFormat.Guid != ImageFormat.Png.Guid)
-                return false;
-
-            using (var bitmap = new Bitmap(origImage))
-            {
-                // アルファ値が 255 以外のピクセルが含まれていた場合は何もしない
-                foreach (var x in Enumerable.Range(0, bitmap.Width))
-                {
-                    foreach (var y in Enumerable.Range(0, bitmap.Height))
-                    {
-                        if (bitmap.GetPixel(x, y).A != 255)
-                            return false;
-                    }
-                }
-
-                // 左上の 1px だけアルファ値を 254 にする
-                var pixel = bitmap.GetPixel(0, 0);
-                var newPixel = Color.FromArgb(pixel.A - 1, pixel.R, pixel.G, pixel.B);
-                bitmap.SetPixel(0, 0, newPixel);
-
-                // MemoryImage 作成時に画像はコピーされるため、この後 bitmap は破棄しても問題ない
-                newImage = MemoryImage.CopyFromImage(bitmap);
-
-                return true;
-            }
-        }
-
-        public async Task SendDirectMessage(string postStr)
+        public async Task SendDirectMessage(string postStr, long? mediaId = null)
         {
             this.CheckAccountState();
             this.CheckAccessLevel(TwitterApiAccessLevel.ReadWriteAndDirectMessage);
 
             var mc = Twitter.DMSendTextRegex.Match(postStr);
 
-            var response = await this.Api.DirectMessagesNew(mc.Groups["body"].Value, mc.Groups["id"].Value)
+            var body = mc.Groups["body"].Value;
+            var recipientName = mc.Groups["id"].Value;
+
+            var recipient = await this.Api.UsersShow(recipientName)
                 .ConfigureAwait(false);
 
-            var dm = await response.LoadJsonAsync()
+            await this.Api.DirectMessagesEventsNew(recipient.Id, body, mediaId)
                 .ConfigureAwait(false);
-
-            this.UpdateUserStats(dm.Sender);
         }
 
-        public async Task PostRetweet(long id, bool read)
+        public async Task<PostClass> PostRetweet(long id, bool read)
         {
             this.CheckAccountState();
 
@@ -411,25 +406,25 @@ namespace OpenTween
             lock (LockObj)
             {
                 if (TabInformations.GetInstance().ContainsKey(status.Id))
-                    return;
+                    return null;
             }
 
             //Retweet判定
             if (status.RetweetedStatus == null)
                 throw new WebApiException("Invalid Json!");
 
-            //ReTweetしたものをTLに追加
+            //Retweetしたものを返す
             post = CreatePostsFromStatusData(status);
-            
+
             //ユーザー情報
             post.IsMe = true;
 
             post.IsRead = read;
             post.IsOwl = false;
-            if (_readOwnPost) post.IsRead = true;
+            if (this.ReadOwnPost) post.IsRead = true;
             post.IsDm = false;
 
-            TabInformations.GetInstance().AddPost(post);
+            return post;
         }
 
         public string Username
@@ -438,32 +433,9 @@ namespace OpenTween
         public long UserId
             => this.Api.CurrentUserId;
 
-        private static MyCommon.ACCOUNT_STATE _accountState = MyCommon.ACCOUNT_STATE.Valid;
-        public static MyCommon.ACCOUNT_STATE AccountState
-        {
-            get
-            {
-                return _accountState;
-            }
-            set
-            {
-                _accountState = value;
-            }
-        }
-
+        public static MyCommon.ACCOUNT_STATE AccountState { get; set; } = MyCommon.ACCOUNT_STATE.Valid;
         public bool RestrictFavCheck { get; set; }
-
-        public bool ReadOwnPost
-        {
-            get
-            {
-                return _readOwnPost;
-            }
-            set
-            {
-                _readOwnPost = value;
-            }
-        }
+        public bool ReadOwnPost { get; set; }
 
         public int FollowersCount { get; private set; }
         public int FriendsCount { get; private set; }
@@ -485,25 +457,19 @@ namespace OpenTween
         /// 渡された取得件数がWORKERTYPEに応じた取得可能範囲に収まっているか検証する
         /// </summary>
         public static bool VerifyApiResultCount(MyCommon.WORKERTYPE type, int count)
-        {
-            return count >= 20 && count <= GetMaxApiResultCount(type);
-        }
+            => count >= 20 && count <= GetMaxApiResultCount(type);
 
         /// <summary>
         /// 渡された取得件数が更新時の取得可能範囲に収まっているか検証する
         /// </summary>
         public static bool VerifyMoreApiResultCount(int count)
-        {
-            return count >= 20 && count <= 200;
-        }
+            => count >= 20 && count <= 200;
 
         /// <summary>
         /// 渡された取得件数が起動時の取得可能範囲に収まっているか検証する
         /// </summary>
         public static bool VerifyFirstApiResultCount(int count)
-        {
-            return count >= 20 && count <= 200;
-        }
+            => count >= 20 && count <= 200;
 
         /// <summary>
         /// WORKERTYPEに応じた取得可能な最大件数を取得する
@@ -518,8 +484,6 @@ namespace OpenTween
                 case MyCommon.WORKERTYPE.Reply:
                 case MyCommon.WORKERTYPE.UserTimeline:
                 case MyCommon.WORKERTYPE.Favorites:
-                case MyCommon.WORKERTYPE.DirectMessegeRcv:
-                case MyCommon.WORKERTYPE.DirectMessegeSnt:
                 case MyCommon.WORKERTYPE.List:  // 不明
                     return 200;
 
@@ -536,12 +500,6 @@ namespace OpenTween
         /// </summary>
         public static int GetApiResultCount(MyCommon.WORKERTYPE type, bool more, bool startup)
         {
-            if (type == MyCommon.WORKERTYPE.DirectMessegeRcv ||
-                type == MyCommon.WORKERTYPE.DirectMessegeSnt)
-            {
-                return 20;
-            }
-
             if (SettingManager.Common.UseAdditionalCount)
             {
                 switch (type)
@@ -601,8 +559,7 @@ namespace OpenTween
             }
 
             var minimumId = this.CreatePostsFromJson(statuses, MyCommon.WORKERTYPE.Timeline, tab, read);
-
-            if (minimumId != null && minimumId.Value < tab.OldestId)
+            if (minimumId != null)
                 tab.OldestId = minimumId.Value;
         }
 
@@ -625,8 +582,7 @@ namespace OpenTween
             }
 
             var minimumId = this.CreatePostsFromJson(statuses, MyCommon.WORKERTYPE.Reply, tab, read);
-
-            if (minimumId != null && minimumId.Value < tab.OldestId)
+            if (minimumId != null)
                 tab.OldestId = minimumId.Value;
         }
 
@@ -661,7 +617,7 @@ namespace OpenTween
 
             var minimumId = CreatePostsFromJson(statuses, MyCommon.WORKERTYPE.UserTimeline, tab, read);
 
-            if (minimumId != null && minimumId.Value < tab.OldestId)
+            if (minimumId != null)
                 tab.OldestId = minimumId.Value;
         }
 
@@ -675,7 +631,7 @@ namespace OpenTween
             var item = CreatePostsFromStatusData(status);
 
             item.IsRead = read;
-            if (item.IsMe && !read && _readOwnPost) item.IsRead = true;
+            if (item.IsMe && !read && this.ReadOwnPost) item.IsRead = true;
 
             return item;
         }
@@ -693,9 +649,7 @@ namespace OpenTween
         }
 
         private PostClass CreatePostsFromStatusData(TwitterStatus status)
-        {
-            return CreatePostsFromStatusData(status, false);
-        }
+            => this.CreatePostsFromStatusData(status, false);
 
         private PostClass CreatePostsFromStatusData(TwitterStatus status, bool favTweet)
         {
@@ -757,7 +711,7 @@ namespace OpenTween
                 {
                     post.RetweetedBy = status.User.ScreenName;
                     post.RetweetedByUserId = status.User.Id;
-                    post.IsMe = post.RetweetedBy.ToLowerInvariant().Equals(_uname);
+                    post.IsMe = post.RetweetedByUserId == this.UserId;
                 }
                 else
                 {
@@ -799,7 +753,7 @@ namespace OpenTween
                     post.Nickname = user.Name.Trim();
                     post.ImageUrl = user.ProfileImageUrlHttps;
                     post.IsProtect = user.Protected;
-                    post.IsMe = post.ScreenName.ToLowerInvariant().Equals(_uname);
+                    post.IsMe = post.UserId == this.UserId;
                 }
                 else
                 {
@@ -810,16 +764,24 @@ namespace OpenTween
             }
             //HTMLに整形
             string textFromApi = post.TextFromApi;
-            post.Text = CreateHtmlAnchor(textFromApi, post.ReplyToList, entities, post.Media);
+
+            var quotedStatusLink = (status.RetweetedStatus ?? status).QuotedStatusPermalink;
+
+            if (quotedStatusLink != null && entities.Urls.Any(x => x.ExpandedUrl == quotedStatusLink.Expanded))
+                quotedStatusLink = null; // 移行期は entities.urls と quoted_status_permalink の両方に含まれる場合がある
+
+            post.Text = CreateHtmlAnchor(textFromApi, entities, quotedStatusLink);
             post.TextFromApi = textFromApi;
-            post.TextFromApi = this.ReplaceTextFromApi(post.TextFromApi, entities);
+            post.TextFromApi = this.ReplaceTextFromApi(post.TextFromApi, entities, quotedStatusLink);
             post.TextFromApi = WebUtility.HtmlDecode(post.TextFromApi);
             post.TextFromApi = post.TextFromApi.Replace("<3", "\u2661");
-            post.AccessibleText = this.CreateAccessibleText(textFromApi, entities, (status.RetweetedStatus ?? status).QuotedStatus);
+            post.AccessibleText = CreateAccessibleText(textFromApi, entities, (status.RetweetedStatus ?? status).QuotedStatus, quotedStatusLink);
             post.AccessibleText = WebUtility.HtmlDecode(post.AccessibleText);
             post.AccessibleText = post.AccessibleText.Replace("<3", "\u2661");
 
-            post.QuoteStatusIds = GetQuoteTweetStatusIds(entities)
+            this.ExtractEntities(entities, post.ReplyToList, post.Media);
+
+            post.QuoteStatusIds = GetQuoteTweetStatusIds(entities, quotedStatusLink)
                 .Where(x => x != post.StatusId && x != post.RetweetedId)
                 .Distinct().ToArray();
 
@@ -844,7 +806,7 @@ namespace OpenTween
             post.Source = string.Intern(sourceText);
             post.SourceUri = sourceUri;
 
-            post.IsReply = post.ReplyToList.Contains(_uname);
+            post.IsReply = post.RetweetedId == null && post.ReplyToList.Any(x => x.UserId == this.UserId);
             post.IsExcludeReply = false;
 
             if (post.IsMe)
@@ -863,9 +825,12 @@ namespace OpenTween
         /// <summary>
         /// ツイートに含まれる引用ツイートのURLからステータスIDを抽出
         /// </summary>
-        public static IEnumerable<long> GetQuoteTweetStatusIds(IEnumerable<TwitterEntity> entities)
+        public static IEnumerable<long> GetQuoteTweetStatusIds(IEnumerable<TwitterEntity> entities, TwitterQuotedStatusPermalink quotedStatusLink)
         {
             var urls = entities.OfType<TwitterEntityUrl>().Select(x => x.ExpandedUrl);
+
+            if (quotedStatusLink != null)
+                urls = urls.Append(quotedStatusLink.Expanded);
 
             return GetQuoteTweetStatusIds(urls);
         }
@@ -912,7 +877,7 @@ namespace OpenTween
                 var post = CreatePostsFromStatusData(status);
 
                 post.IsRead = read;
-                if (post.IsMe && !read && _readOwnPost) post.IsRead = true;
+                if (post.IsMe && !read && this.ReadOwnPost) post.IsRead = true;
 
                 if (tab != null && tab.IsInnerStorageTabType)
                     tab.AddPostQueue(post);
@@ -944,7 +909,7 @@ namespace OpenTween
                 var post = CreatePostsFromStatusData(status);
 
                 post.IsRead = read;
-                if ((post.IsMe && !read) && this._readOwnPost) post.IsRead = true;
+                if ((post.IsMe && !read) && this.ReadOwnPost) post.IsRead = true;
 
                 tab.AddPostQueue(post);
             }
@@ -996,7 +961,7 @@ namespace OpenTween
 
             var minimumId = CreatePostsFromJson(statuses, MyCommon.WORKERTYPE.List, tab, read);
 
-            if (minimumId != null && minimumId.Value < tab.OldestId)
+            if (minimumId != null)
                 tab.OldestId = minimumId.Value;
         }
 
@@ -1103,7 +1068,7 @@ namespace OpenTween
 
             relPosts.Values.ToList().ForEach(p =>
             {
-                if (p.IsMe && !read && this._readOwnPost)
+                if (p.IsMe && !read && this.ReadOwnPost)
                     p.IsRead = true;
                 else
                     p.IsRead = read;
@@ -1138,7 +1103,7 @@ namespace OpenTween
 
             var minimumId = this.CreatePostsFromSearchJson(searchResult, tab, read, more);
 
-            if (minimumId != null && minimumId.Value < tab.OldestId)
+            if (minimumId != null)
                 tab.OldestId = minimumId.Value;
         }
 
@@ -1150,17 +1115,6 @@ namespace OpenTween
                 try
                 {
                     post.StatusId = message.Id;
-                    if (gType != MyCommon.WORKERTYPE.UserStream)
-                    {
-                        if (gType == MyCommon.WORKERTYPE.DirectMessegeRcv)
-                        {
-                            if (minDirectmessage > post.StatusId) minDirectmessage = post.StatusId;
-                        }
-                        else
-                        {
-                            if (minDirectmessageSent > post.StatusId) minDirectmessageSent = post.StatusId;
-                        }
-                    }
 
                     //二重取得回避
                     lock (LockObj)
@@ -1173,16 +1127,19 @@ namespace OpenTween
                     //本文
                     var textFromApi = message.Text;
                     //HTMLに整形
-                    post.Text = CreateHtmlAnchor(textFromApi, post.ReplyToList, message.Entities, post.Media);
-                    post.TextFromApi = this.ReplaceTextFromApi(textFromApi, message.Entities);
+                    post.Text = CreateHtmlAnchor(textFromApi, message.Entities, quotedStatusLink: null);
+                    post.TextFromApi = this.ReplaceTextFromApi(textFromApi, message.Entities, quotedStatusLink: null);
                     post.TextFromApi = WebUtility.HtmlDecode(post.TextFromApi);
                     post.TextFromApi = post.TextFromApi.Replace("<3", "\u2661");
-                    post.AccessibleText = this.CreateAccessibleText(textFromApi, message.Entities, quoteStatus: null);
+                    post.AccessibleText = CreateAccessibleText(textFromApi, message.Entities, quotedStatus: null, quotedStatusLink: null);
                     post.AccessibleText = WebUtility.HtmlDecode(post.AccessibleText);
                     post.AccessibleText = post.AccessibleText.Replace("<3", "\u2661");
                     post.IsFav = false;
 
-                    post.QuoteStatusIds = GetQuoteTweetStatusIds(message.Entities).Distinct().ToArray();
+                    this.ExtractEntities(message.Entities, post.ReplyToList, post.Media);
+
+                    post.QuoteStatusIds = GetQuoteTweetStatusIds(message.Entities, quotedStatusLink: null)
+                        .Distinct().ToArray();
 
                     post.ExpandedUrls = message.Entities.OfType<TwitterEntityUrl>()
                         .Select(x => new PostClass.ExpandedUrlInfo(x.Url, x.ExpandedUrl))
@@ -1246,7 +1203,7 @@ namespace OpenTween
                 }
 
                 post.IsRead = read;
-                if (post.IsMe && !read && _readOwnPost) post.IsRead = true;
+                if (post.IsMe && !read && this.ReadOwnPost) post.IsRead = true;
                 post.IsReply = false;
                 post.IsExcludeReply = false;
                 post.IsDm = true;
@@ -1256,42 +1213,142 @@ namespace OpenTween
             }
         }
 
-        public async Task GetDirectMessageApi(bool read, MyCommon.WORKERTYPE gType, bool more)
+        public async Task GetDirectMessageEvents(bool read, bool backward)
         {
             this.CheckAccountState();
             this.CheckAccessLevel(TwitterApiAccessLevel.ReadWriteAndDirectMessage);
 
-            var count = GetApiResultCount(gType, more, false);
+            var count = 50;
 
-            TwitterDirectMessage[] messages;
-            if (gType == MyCommon.WORKERTYPE.DirectMessegeRcv)
+            TwitterMessageEventList eventList;
+            if (backward)
             {
-                if (more)
-                {
-                    messages = await this.Api.DirectMessagesRecv(count, maxId: this.minDirectmessage)
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    messages = await this.Api.DirectMessagesRecv(count)
-                        .ConfigureAwait(false);
-                }
+                eventList = await this.Api.DirectMessagesEventsList(count, this.nextCursorDirectMessage)
+                    .ConfigureAwait(false);
             }
             else
             {
-                if (more)
+                eventList = await this.Api.DirectMessagesEventsList(count)
+                    .ConfigureAwait(false);
+            }
+
+            this.nextCursorDirectMessage = eventList.NextCursor;
+
+            var events = eventList.Events
+                .Where(x => x.Type == "message_create")
+                .ToArray();
+
+            if (events.Length == 0)
+                return;
+
+            var userIds = Enumerable.Concat(
+                events.Select(x => x.MessageCreate.SenderId),
+                events.Select(x => x.MessageCreate.Target.RecipientId)
+            ).Distinct().ToArray();
+
+            var users = (await this.Api.UsersLookup(userIds).ConfigureAwait(false))
+                .ToDictionary(x => x.IdStr);
+
+            var apps = eventList.Apps ?? new Dictionary<string, TwitterMessageEventList.App>();
+
+            this.CreateDirectMessagesEventFromJson(events, users, apps, read);
+        }
+
+        private void CreateDirectMessagesEventFromJson(IEnumerable<TwitterMessageEvent> events, IReadOnlyDictionary<string, TwitterUser> users,
+            IReadOnlyDictionary<string, TwitterMessageEventList.App> apps, bool read)
+        {
+            foreach (var eventItem in events)
+            {
+                var post = new PostClass();
+                post.StatusId = long.Parse(eventItem.Id);
+
+                var timestamp = long.Parse(eventItem.CreatedTimestamp);
+                post.CreatedAt = DateTimeUtc.UnixEpoch + TimeSpan.FromTicks(timestamp * TimeSpan.TicksPerMillisecond);
+                //本文
+                var textFromApi = eventItem.MessageCreate.MessageData.Text;
+
+                var entities = eventItem.MessageCreate.MessageData.Entities;
+                var mediaEntity = eventItem.MessageCreate.MessageData.Attachment?.Media;
+
+                if (mediaEntity != null)
+                    entities.Media = new[] { mediaEntity };
+
+                //HTMLに整形
+                post.Text = CreateHtmlAnchor(textFromApi, entities, quotedStatusLink: null);
+                post.TextFromApi = this.ReplaceTextFromApi(textFromApi, entities, quotedStatusLink: null);
+                post.TextFromApi = WebUtility.HtmlDecode(post.TextFromApi);
+                post.TextFromApi = post.TextFromApi.Replace("<3", "\u2661");
+                post.AccessibleText = CreateAccessibleText(textFromApi, entities, quotedStatus: null, quotedStatusLink: null);
+                post.AccessibleText = WebUtility.HtmlDecode(post.AccessibleText);
+                post.AccessibleText = post.AccessibleText.Replace("<3", "\u2661");
+                post.IsFav = false;
+
+                this.ExtractEntities(entities, post.ReplyToList, post.Media);
+
+                post.QuoteStatusIds = GetQuoteTweetStatusIds(entities, quotedStatusLink: null)
+                    .Distinct().ToArray();
+
+                post.ExpandedUrls = entities.OfType<TwitterEntityUrl>()
+                    .Select(x => new PostClass.ExpandedUrlInfo(x.Url, x.ExpandedUrl))
+                    .ToArray();
+
+                //以下、ユーザー情報
+                string userId;
+                if (eventItem.MessageCreate.SenderId != this.Api.CurrentUserId.ToString(CultureInfo.InvariantCulture))
                 {
-                    messages = await this.Api.DirectMessagesSent(count, maxId: this.minDirectmessageSent)
-                        .ConfigureAwait(false);
+                    userId = eventItem.MessageCreate.SenderId;
+                    post.IsMe = false;
+                    post.IsOwl = true;
                 }
                 else
                 {
-                    messages = await this.Api.DirectMessagesSent(count)
-                        .ConfigureAwait(false);
+                    userId = eventItem.MessageCreate.Target.RecipientId;
+                    post.IsMe = true;
+                    post.IsOwl = false;
                 }
-            }
 
-            CreateDirectMessagesFromJson(messages, gType, read);
+                if (!users.TryGetValue(userId, out var user))
+                    continue;
+
+                post.UserId = user.Id;
+                post.ScreenName = user.ScreenName;
+                post.Nickname = user.Name.Trim();
+                post.ImageUrl = user.ProfileImageUrlHttps;
+                post.IsProtect = user.Protected;
+
+                // メモリ使用量削減 (同一のテキストであれば同一の string インスタンスを参照させる)
+                if (post.Text == post.TextFromApi)
+                    post.Text = post.TextFromApi;
+                if (post.AccessibleText == post.TextFromApi)
+                    post.AccessibleText = post.TextFromApi;
+
+                // 他の発言と重複しやすい (共通化できる) 文字列は string.Intern を通す
+                post.ScreenName = string.Intern(post.ScreenName);
+                post.Nickname = string.Intern(post.Nickname);
+                post.ImageUrl = string.Intern(post.ImageUrl);
+
+                var appId = eventItem.MessageCreate.SourceAppId;
+                if (appId != null && apps.TryGetValue(appId, out var app))
+                {
+                    post.Source = string.Intern(app.Name);
+
+                    try
+                    {
+                        post.SourceUri = new Uri(SourceUriBase, app.Url);
+                    }
+                    catch (UriFormatException) { }
+                }
+
+                post.IsRead = read;
+                if (post.IsMe && !read && this.ReadOwnPost)
+                    post.IsRead = true;
+                post.IsReply = false;
+                post.IsExcludeReply = false;
+                post.IsDm = true;
+
+                var dmTab = TabInformations.GetInstance().GetTabByType<DirectMessagesTabModel>();
+                dmTab.AddPostQueue(post);
+            }
         }
 
         public async Task GetFavoritesApi(bool read, FavoritesTabModel tab, bool backward)
@@ -1314,11 +1371,11 @@ namespace OpenTween
 
             var minimumId = this.CreateFavoritePostsFromJson(statuses, read);
 
-            if (minimumId != null && minimumId.Value < tab.OldestId)
+            if (minimumId != null)
                 tab.OldestId = minimumId.Value;
         }
 
-        private string ReplaceTextFromApi(string text, TwitterEntities entities)
+        private string ReplaceTextFromApi(string text, TwitterEntities entities, TwitterQuotedStatusPermalink quotedStatusLink)
         {
             if (entities != null)
             {
@@ -1337,10 +1394,14 @@ namespace OpenTween
                     }
                 }
             }
+
+            if (quotedStatusLink != null)
+                text += " " + quotedStatusLink.Display;
+
             return text;
         }
 
-        private string CreateAccessibleText(string text, TwitterEntities entities, TwitterStatus quoteStatus)
+        internal static string CreateAccessibleText(string text, TwitterEntities entities, TwitterStatus quotedStatus, TwitterQuotedStatusPermalink quotedStatusLink)
         {
             if (entities == null)
                 return text;
@@ -1349,19 +1410,19 @@ namespace OpenTween
             {
                 foreach (var entity in entities.Urls)
                 {
-                    if (quoteStatus != null)
+                    if (quotedStatus != null)
                     {
                         var matchStatusUrl = Twitter.StatusUrlRegex.Match(entity.ExpandedUrl);
-                        if (matchStatusUrl.Success && matchStatusUrl.Groups["StatusId"].Value == quoteStatus.IdStr)
+                        if (matchStatusUrl.Success && matchStatusUrl.Groups["StatusId"].Value == quotedStatus.IdStr)
                         {
-                            var quoteText = this.CreateAccessibleText(quoteStatus.FullText, quoteStatus.MergedEntities, quoteStatus: null);
-                            text = text.Replace(entity.Url, string.Format(Properties.Resources.QuoteStatus_AccessibleText, quoteStatus.User.ScreenName, quoteText));
+                            var quotedText = CreateAccessibleText(quotedStatus.FullText, quotedStatus.MergedEntities, quotedStatus: null, quotedStatusLink: null);
+                            text = text.Replace(entity.Url, string.Format(Properties.Resources.QuoteStatus_AccessibleText, quotedStatus.User.ScreenName, quotedText));
+                            continue;
                         }
                     }
-                    else if (!string.IsNullOrEmpty(entity.DisplayUrl))
-                    {
+
+                    if (!string.IsNullOrEmpty(entity.DisplayUrl))
                         text = text.Replace(entity.Url, entity.DisplayUrl);
-                    }
                 }
             }
 
@@ -1380,6 +1441,12 @@ namespace OpenTween
                 }
             }
 
+            if (quotedStatusLink != null)
+            {
+                var quoteText = CreateAccessibleText(quotedStatus.FullText, quotedStatus.MergedEntities, quotedStatus: null, quotedStatusLink: null);
+                text += " " + string.Format(Properties.Resources.QuoteStatus_AccessibleText, quotedStatus.User.ScreenName, quoteText);
+            }
+
             return text;
         }
 
@@ -1392,7 +1459,7 @@ namespace OpenTween
             if (MyCommon._endingFlag) return;
 
             var cursor = -1L;
-            var newFollowerIds = new HashSet<long>();
+            var newFollowerIds = Enumerable.Empty<long>();
             do
             {
                 var ret = await this.Api.FollowersIds(cursor)
@@ -1401,22 +1468,14 @@ namespace OpenTween
                 if (ret.Ids == null)
                     throw new WebApiException("ret.ids == null");
 
-                newFollowerIds.UnionWith(ret.Ids);
+                newFollowerIds = newFollowerIds.Concat(ret.Ids);
                 cursor = ret.NextCursor;
             } while (cursor != 0);
 
-            this.followerId = newFollowerIds;
+            this.followerId = newFollowerIds.ToHashSet();
             TabInformations.GetInstance().RefreshOwl(this.followerId);
 
-            this._GetFollowerResult = true;
-        }
-
-        public bool GetFollowersSuccess
-        {
-            get
-            {
-                return _GetFollowerResult;
-            }
+            this.GetFollowersSuccess = true;
         }
 
         /// <summary>
@@ -1430,15 +1489,7 @@ namespace OpenTween
             this.noRTId = await this.Api.NoRetweetIds()
                 .ConfigureAwait(false);
 
-            this._GetNoRetweetResult = true;
-        }
-
-        public bool GetNoRetweetSuccess
-        {
-            get
-            {
-                return _GetNoRetweetResult;
-            }
+            this.GetNoRetweetSuccess = true;
         }
 
         /// <summary>
@@ -1449,6 +1500,9 @@ namespace OpenTween
         {
             this.Configuration = await this.Api.Configuration()
                 .ConfigureAwait(false);
+
+            // TextConfiguration 相当の JSON を得る API が存在しないため、TransformedURLLength のみ help/configuration.json に合わせて更新する
+            this.TextConfiguration.TransformedURLLength = this.Configuration.ShortUrlLengthHttps;
         }
 
         public async Task GetListsApi()
@@ -1535,7 +1589,7 @@ namespace OpenTween
             }
         }
 
-        public string CreateHtmlAnchor(string text, List<string> AtList, TwitterEntities entities, List<MediaInfo> media)
+        private void ExtractEntities(TwitterEntities entities, List<(long UserId, string ScreenName)> AtList, List<MediaInfo> media)
         {
             if (entities != null)
             {
@@ -1550,9 +1604,7 @@ namespace OpenTween
                 {
                     foreach (var ent in entities.UserMentions)
                     {
-                        var screenName = ent.ScreenName.ToLowerInvariant();
-                        if (!AtList.Contains(screenName))
-                            AtList.Add(screenName);
+                        AtList.Add((ent.Id, ent.ScreenName));
                     }
                 }
                 if (entities.Media != null)
@@ -1561,7 +1613,7 @@ namespace OpenTween
                     {
                         foreach (var ent in entities.Media)
                         {
-                            if (!media.Any(x => x.Url == ent.MediaUrl))
+                            if (!media.Any(x => x.Url == ent.MediaUrlHttps))
                             {
                                 if (ent.VideoInfo != null &&
                                     ent.Type == "animated_gif" || ent.Type == "video")
@@ -1570,21 +1622,33 @@ namespace OpenTween
                                     //    .Where(v => v.ContentType == "video/mp4")
                                     //    .OrderByDescending(v => v.Bitrate)
                                     //    .Select(v => v.Url).FirstOrDefault();
-                                    media.Add(new MediaInfo(ent.MediaUrl, ent.AltText, ent.ExpandedUrl));
+                                    media.Add(new MediaInfo(ent.MediaUrlHttps, ent.AltText, ent.ExpandedUrl));
                                 }
                                 else
-                                    media.Add(new MediaInfo(ent.MediaUrl, ent.AltText, videoUrl: null));
+                                    media.Add(new MediaInfo(ent.MediaUrlHttps, ent.AltText, videoUrl: null));
                             }
                         }
                     }
                 }
             }
+        }
+
+        internal static string CreateHtmlAnchor(string text, TwitterEntities entities, TwitterQuotedStatusPermalink quotedStatusLink)
+        {
+            var mergedEntities = entities.Concat(TweetExtractor.ExtractEmojiEntities(text));
 
             // PostClass.ExpandedUrlInfo を使用して非同期に URL 展開を行うためここでは expanded_url を使用しない
-            text = TweetFormatter.AutoLinkHtml(text, entities, keepTco: true);
+            text = TweetFormatter.AutoLinkHtml(text, mergedEntities, keepTco: true);
 
-            text = Regex.Replace(text, "(^|[^a-zA-Z0-9_/&#＃@＠>=.~])(sm|nm)([0-9]{1,10})", "$1<a href=\"http://www.nicovideo.jp/watch/$2$3\">$2$3</a>");
+            text = Regex.Replace(text, "(^|[^a-zA-Z0-9_/&#＃@＠>=.~])(sm|nm)([0-9]{1,10})", "$1<a href=\"https://www.nicovideo.jp/watch/$2$3\">$2$3</a>");
             text = PreProcessUrl(text); //IDN置換
+
+            if (quotedStatusLink != null)
+            {
+                text += string.Format(" <a href=\"{0}\" title=\"{0}\">{1}</a>",
+                    WebUtility.HtmlEncode(quotedStatusLink.Url),
+                    WebUtility.HtmlEncode(quotedStatusLink.Display));
+            }
 
             return text;
         }
@@ -1650,19 +1714,20 @@ namespace OpenTween
             if (MyCommon._endingFlag) return;
 
             var cursor = -1L;
-            var newBlockIds = new HashSet<long>();
+            var newBlockIds = Enumerable.Empty<long>();
             do
             {
                 var ret = await this.Api.BlocksIds(cursor)
                     .ConfigureAwait(false);
 
-                newBlockIds.UnionWith(ret.Ids);
+                newBlockIds = newBlockIds.Concat(ret.Ids);
                 cursor = ret.NextCursor;
             } while (cursor != 0);
 
-            newBlockIds.Remove(this.UserId); // 元のソースにあったので一応残しておく
+            var blockIdsSet = newBlockIds.ToHashSet();
+            blockIdsSet.Remove(this.UserId); // 元のソースにあったので一応残しておく
 
-            TabInformations.GetInstance().BlockIds = newBlockIds;
+            TabInformations.GetInstance().BlockIds = blockIdsSet;
         }
 
         /// <summary>
@@ -1676,7 +1741,7 @@ namespace OpenTween
             var ids = await TwitterIds.GetAllItemsAsync(x => this.Api.MutesUsersIds(x))
                 .ConfigureAwait(false);
 
-            TabInformations.GetInstance().MuteUserIds = new HashSet<long>(ids);
+            TabInformations.GetInstance().MuteUserIds = ids.ToHashSet();
         }
 
         public string[] GetHashList()
@@ -1712,12 +1777,12 @@ namespace OpenTween
         {
             var matchDm = Twitter.DMSendTextRegex.Match(postText);
             if (matchDm.Success)
-                return this.GetTextLengthRemainInternal(matchDm.Groups["body"].Value, isDm: true);
+                return this.GetTextLengthRemainDM(matchDm.Groups["body"].Value);
 
-            return this.GetTextLengthRemainInternal(postText, isDm: false);
+            return this.GetTextLengthRemainWeighted(postText);
         }
 
-        private int GetTextLengthRemainInternal(string postText, bool isDm)
+        private int GetTextLengthRemainDM(string postText)
         {
             var textLength = 0;
 
@@ -1742,51 +1807,78 @@ namespace OpenTween
                 textLength += shortUrlLength - url.Length;
             }
 
-            if (isDm)
-                return this.Configuration.DmTextCharacterLimit - textLength;
-            else
-                return 140 - textLength;
+            return this.Configuration.DmTextCharacterLimit - textLength;
+        }
+
+        private int GetTextLengthRemainWeighted(string postText)
+        {
+            var config = this.TextConfiguration;
+            var totalWeight = 0;
+
+            int GetWeightFromCodepoint(int codepoint)
+            {
+                foreach (var weightRange in config.Ranges)
+                {
+                    if (codepoint >= weightRange.Start && codepoint <= weightRange.End)
+                        return weightRange.Weight;
+                }
+
+                return config.DefaultWeight;
+            }
+
+            var urls = TweetExtractor.ExtractUrlEntities(postText).ToArray();
+            var emojis = config.EmojiParsingEnabled
+                ? TweetExtractor.ExtractEmojiEntities(postText).ToArray()
+                : Array.Empty<TwitterEntityEmoji>();
+
+            var codepoints = postText.ToCodepoints().ToArray();
+            var index = 0;
+            while (index < codepoints.Length)
+            {
+                var urlEntity = urls.FirstOrDefault(x => x.Indices[0] == index);
+                if (urlEntity != null)
+                {
+                    totalWeight += config.TransformedURLLength * config.Scale;
+                    index = urlEntity.Indices[1];
+                    continue;
+                }
+
+                var emojiEntity = emojis.FirstOrDefault(x => x.Indices[0] == index);
+                if (emojiEntity != null)
+                {
+                    totalWeight += GetWeightFromCodepoint(codepoints[index]);
+                    index = emojiEntity.Indices[1];
+                    continue;
+                }
+
+                var codepoint = codepoints[index];
+                totalWeight += GetWeightFromCodepoint(codepoint);
+
+                index++;
+            }
+
+            var remainWeight = config.MaxWeightedTweetLength * config.Scale - totalWeight;
+
+            return remainWeight / config.Scale;
         }
 
 
 #region "UserStream"
-        private string trackWord_ = "";
-        public string TrackWord
-        {
-            get
-            {
-                return trackWord_;
-            }
-            set
-            {
-                trackWord_ = value;
-            }
-        }
-        private bool allAtReply_ = false;
-        public bool AllAtReply
-        {
-            get
-            {
-                return allAtReply_;
-            }
-            set
-            {
-                allAtReply_ = value;
-            }
-        }
+        public string TrackWord { get; set; } = "";
+        public bool AllAtReply { get; set; } = false;
 
         public event EventHandler NewPostFromStream;
         public event EventHandler UserStreamStarted;
         public event EventHandler UserStreamStopped;
         public event EventHandler<PostDeletedEventArgs> PostDeleted;
         public event EventHandler<UserStreamEventReceivedEventArgs> UserStreamEventReceived;
-        private DateTime _lastUserstreamDataReceived;
-        private TwitterUserstream userStream;
+        private DateTimeUtc _lastUserstreamDataReceived;
+        private StreamAutoConnector userStreamConnector;
 
         public class FormattedEvent
         {
             public MyCommon.EVENTTYPE Eventtype { get; set; }
-            public DateTime CreatedAt { get; set; }
+            public DateTimeUtc CreatedAt { get; set; }
             public string Event { get; set; }
             public string Username { get; set; }
             public string Target { get; set; }
@@ -1794,18 +1886,7 @@ namespace OpenTween
             public bool IsMe { get; set; }
         }
 
-        public List<FormattedEvent> storedEvent_ = new List<FormattedEvent>();
-        public List<FormattedEvent> StoredEvent
-        {
-            get
-            {
-                return storedEvent_;
-            }
-            set
-            {
-                storedEvent_ = value;
-            }
-        }
+        public List<FormattedEvent> StoredEvent { get; } = new List<FormattedEvent>();
 
         private readonly IReadOnlyDictionary<string, MyCommon.EVENTTYPE> eventTable = new Dictionary<string, MyCommon.EVENTTYPE>
         {
@@ -1830,209 +1911,106 @@ namespace OpenTween
         };
 
         public bool IsUserstreamDataReceived
+            => (DateTimeUtc.Now - this._lastUserstreamDataReceived).TotalSeconds < 31;
+
+        private void userStream_MessageReceived(ITwitterStreamMessage message)
         {
-            get
+            this._lastUserstreamDataReceived = DateTimeUtc.Now;
+
+            switch (message)
             {
-                return DateTime.Now.Subtract(this._lastUserstreamDataReceived).TotalSeconds < 31;
-            }
-        }
+                case StreamMessageStatus statusMessage:
+                    var status = statusMessage.Status.Normalize();
 
-        private void userStream_StatusArrived(string line)
-        {
-            this._lastUserstreamDataReceived = DateTime.Now;
-            if (string.IsNullOrEmpty(line)) return;
-
-            if (line.First() != '{' || line.Last() != '}')
-            {
-                MyCommon.TraceOut("Invalid JSON (StatusArrived):" + Environment.NewLine + line);
-                return;
-            }
-
-            var isDm = false;
-
-            try
-            {
-                using (var jsonReader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(line), XmlDictionaryReaderQuotas.Max))
-                {
-                    var xElm = XElement.Load(jsonReader);
-                    if (xElm.Element("friends") != null)
+                    if (status.RetweetedStatus is TwitterStatus retweetedStatus)
                     {
-                        Debug.WriteLine("friends");
-                        return;
-                    }
-                    else if (xElm.Element("delete") != null)
-                    {
-                        Debug.WriteLine("delete");
-                        Int64 id;
-                        XElement idElm;
-                        if ((idElm = xElm.Element("delete").Element("direct_message")?.Element("id")) != null)
-                        {
-                            id = 0;
-                            long.TryParse(idElm.Value, out id);
-
-                            this.PostDeleted?.Invoke(this, new PostDeletedEventArgs(id));
-                        }
-                        else if ((idElm = xElm.Element("delete").Element("status")?.Element("id")) != null)
-                        {
-                            id = 0;
-                            long.TryParse(idElm.Value, out id);
-
-                            this.PostDeleted?.Invoke(this, new PostDeletedEventArgs(id));
-                        }
-                        else
-                        {
-                            MyCommon.TraceOut("delete:" + line);
-                            return;
-                        }
-                        for (int i = this.StoredEvent.Count - 1; i >= 0; i--)
-                        {
-                            var sEvt = this.StoredEvent[i];
-                            if (sEvt.Id == id && (sEvt.Event == "favorite" || sEvt.Event == "unfavorite"))
-                            {
-                                this.StoredEvent.RemoveAt(i);
-                            }
-                        }
-                        return;
-                    }
-                    else if (xElm.Element("limit") != null)
-                    {
-                        Debug.WriteLine(line);
-                        return;
-                    }
-                    else if (xElm.Element("event") != null)
-                    {
-                        Debug.WriteLine("event: " + xElm.Element("event").Value);
-                        CreateEventFromJson(line);
-                        return;
-                    }
-                    else if (xElm.Element("direct_message") != null)
-                    {
-                        Debug.WriteLine("direct_message");
-                        isDm = true;
-                    }
-                    else if (xElm.Element("retweeted_status") != null)
-                    {
-                        var sourceUserId = xElm.XPathSelectElement("/user/id_str").Value;
-                        var targetUserId = xElm.XPathSelectElement("/retweeted_status/user/id_str").Value;
+                        var sourceUserId = statusMessage.Status.User.Id;
+                        var targetUserId = retweetedStatus.User.Id;
 
                         // 自分に関係しないリツイートの場合は無視する
-                        var selfUserId = this.UserId.ToString();
+                        var selfUserId = this.UserId;
                         if (sourceUserId == selfUserId || targetUserId == selfUserId)
                         {
                             // 公式 RT をイベントとしても扱う
-                            var evt = CreateEventFromRetweet(xElm);
-                            if (evt != null)
-                            {
-                                this.StoredEvent.Insert(0, evt);
-
-                                this.UserStreamEventReceived?.Invoke(this, new UserStreamEventReceivedEventArgs(evt));
-                            }
+                            var evt = this.CreateEventFromRetweet(status);
+                            this.StoredEvent.Insert(0, evt);
+                            this.UserStreamEventReceived?.Invoke(this, new UserStreamEventReceivedEventArgs(evt));
                         }
-
-                        // 従来通り公式 RT の表示も行うため return しない
+                        // 従来通り公式 RT の表示も行うため break しない
                     }
-                    else if (xElm.Element("scrub_geo") != null)
+
+                    this.CreatePostsFromJson(new[] { status }, MyCommon.WORKERTYPE.UserStream, null, false);
+                    this.NewPostFromStream?.Invoke(this, EventArgs.Empty);
+                    break;
+
+                case StreamMessageDirectMessage dmMessage:
+                    this.CreateDirectMessagesFromJson(new[] { dmMessage.DirectMessage }, MyCommon.WORKERTYPE.UserStream, false);
+                    this.NewPostFromStream?.Invoke(this, EventArgs.Empty);
+                    break;
+
+                case StreamMessageDelete deleteMessage:
+                    var deletedId = deleteMessage.Status?.Id ?? deleteMessage.DirectMessage?.Id;
+                    if (deletedId == null)
+                        break;
+
+                    this.PostDeleted?.Invoke(this, new PostDeletedEventArgs(deletedId.Value));
+
+                    foreach (var index in MyCommon.CountDown(this.StoredEvent.Count - 1, 0))
                     {
-                        try
+                        var evt = this.StoredEvent[index];
+                        if (evt.Id == deletedId.Value && (evt.Event == "favorite" || evt.Event == "unfavorite"))
                         {
-                            TabInformations.GetInstance().ScrubGeoReserve(long.Parse(xElm.Element("scrub_geo").Element("user_id").Value),
-                                                                        long.Parse(xElm.Element("scrub_geo").Element("up_to_status_id").Value));
+                            this.StoredEvent.RemoveAt(index);
                         }
-                        catch(Exception)
-                        {
-                            MyCommon.TraceOut("scrub_geo:" + line);
-                        }
-                        return;
                     }
-                }
+                    break;
 
-                if (isDm)
-                {
-                    try
-                    {
-                        var message = TwitterStreamEventDirectMessage.ParseJson(line).DirectMessage;
-                        this.CreateDirectMessagesFromJson(new[] { message }, MyCommon.WORKERTYPE.UserStream, false);
-                    }
-                    catch (SerializationException ex)
-                    {
-                        throw TwitterApiException.CreateFromException(ex, line);
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        var status = TwitterStatusCompat.ParseJson(line);
-                        this.CreatePostsFromJson(new[] { status.Normalize() }, MyCommon.WORKERTYPE.UserStream, null, false);
-                    }
-                    catch (SerializationException ex)
-                    {
-                        throw TwitterApiException.CreateFromException(ex, line);
-                    }
-                }
-            }
-            catch (WebApiException ex)
-            {
-                MyCommon.TraceOut(ex);
-                return;
-            }
-            catch (XmlException)
-            {
-                MyCommon.TraceOut("XmlException (StatusArrived): " + line);
-            }
-            catch(NullReferenceException)
-            {
-                MyCommon.TraceOut("NullRef StatusArrived: " + line);
-            }
+                case StreamMessageEvent eventMessage:
+                    this.CreateEventFromJson(eventMessage);
+                    break;
 
-            this.NewPostFromStream?.Invoke(this, EventArgs.Empty);
+                case StreamMessageScrubGeo scrubGeoMessage:
+                    TabInformations.GetInstance().ScrubGeoReserve(scrubGeoMessage.UserId, scrubGeoMessage.UpToStatusId);
+                    break;
+
+                default:
+                    break;
+            }
         }
 
         /// <summary>
         /// UserStreamsから受信した公式RTをイベントに変換します
         /// </summary>
-        private FormattedEvent CreateEventFromRetweet(XElement xElm)
+        private FormattedEvent CreateEventFromRetweet(TwitterStatus status)
         {
             return new FormattedEvent
             {
                 Eventtype = MyCommon.EVENTTYPE.Retweet,
                 Event = "retweet",
-                CreatedAt = MyCommon.DateTimeParse(xElm.XPathSelectElement("/created_at").Value),
-                IsMe = xElm.XPathSelectElement("/user/id_str").Value == this.UserId.ToString(),
-                Username = xElm.XPathSelectElement("/user/screen_name").Value,
+                CreatedAt = MyCommon.DateTimeParse(status.CreatedAt),
+                IsMe = status.User.Id == this.UserId,
+                Username = status.User.ScreenName,
                 Target = string.Format("@{0}:{1}", new[]
                 {
-                    xElm.XPathSelectElement("/retweeted_status/user/screen_name").Value,
-                    WebUtility.HtmlDecode(xElm.XPathSelectElement("/retweeted_status/text").Value),
+                    status.RetweetedStatus.User.ScreenName,
+                    WebUtility.HtmlDecode(status.RetweetedStatus.FullText),
                 }),
-                Id = long.Parse(xElm.XPathSelectElement("/retweeted_status/id_str").Value),
+                Id = status.RetweetedStatus.Id,
             };
         }
 
-        private void CreateEventFromJson(string content)
+        private void CreateEventFromJson(StreamMessageEvent message)
         {
-            TwitterStreamEvent eventData = null;
-            try
-            {
-                eventData = TwitterStreamEvent.ParseJson(content);
-            }
-            catch(SerializationException ex)
-            {
-                MyCommon.TraceOut(ex, "Event Serialize Exception!" + Environment.NewLine + content);
-            }
-            catch(Exception ex)
-            {
-                MyCommon.TraceOut(ex, "Event Exception!" + Environment.NewLine + content);
-            }
+            var eventData = message.Event;
 
-            var evt = new FormattedEvent();
-            evt.CreatedAt = MyCommon.DateTimeParse(eventData.CreatedAt);
-            evt.Event = eventData.Event;
-            evt.Username = eventData.Source.ScreenName;
-            evt.IsMe = evt.Username.ToLowerInvariant().Equals(this.Username.ToLowerInvariant());
-
-            eventTable.TryGetValue(eventData.Event, out var eventType);
-            evt.Eventtype = eventType;
+            var evt = new FormattedEvent
+            {
+                CreatedAt = MyCommon.DateTimeParse(eventData.CreatedAt),
+                Event = eventData.Event,
+                Username = eventData.Source.ScreenName,
+                IsMe = eventData.Source.Id == this.UserId,
+                Eventtype = eventTable.TryGetValue(eventData.Event, out var eventType) ? eventType : MyCommon.EVENTTYPE.None,
+            };
 
             TwitterStreamEvent<TwitterStatusCompat> tweetEvent;
             TwitterStatus tweet;
@@ -2045,7 +2023,7 @@ namespace OpenTween
                 case "user_suspend":
                     return;
                 case "follow":
-                    if (eventData.Target.ScreenName.ToLowerInvariant().Equals(_uname))
+                    if (eventData.Target.Id == this.UserId)
                     {
                         if (!this.followerId.Contains(eventData.Source.Id)) this.followerId.Add(eventData.Source.Id);
                     }
@@ -2063,7 +2041,7 @@ namespace OpenTween
                     return;
                 case "favorite":
                 case "unfavorite":
-                    tweetEvent = TwitterStreamEvent<TwitterStatusCompat>.ParseJson(content);
+                    tweetEvent = message.ParseTargetObjectAs<TwitterStatusCompat>();
                     tweet = tweetEvent.TargetObject.Normalize();
                     evt.Target = "@" + tweet.User.ScreenName + ":" + WebUtility.HtmlDecode(tweet.FullText);
                     evt.Id = tweet.Id;
@@ -2112,7 +2090,7 @@ namespace OpenTween
                 case "quoted_tweet":
                     if (evt.IsMe) return;
 
-                    tweetEvent = TwitterStreamEvent<TwitterStatusCompat>.ParseJson(content);
+                    tweetEvent = message.ParseTargetObjectAs<TwitterStatusCompat>();
                     tweet = tweetEvent.TargetObject.Normalize();
                     evt.Target = "@" + tweet.User.ScreenName + ":" + WebUtility.HtmlDecode(tweet.FullText);
                     evt.Id = tweet.Id;
@@ -2130,7 +2108,7 @@ namespace OpenTween
                 case "list_updated":
                 case "list_user_subscribed":
                 case "list_user_unsubscribed":
-                    var listEvent = TwitterStreamEvent<TwitterList>.ParseJson(content);
+                    var listEvent = message.ParseTargetObjectAs<TwitterList>();
                     evt.Target = listEvent.TargetObject.FullName;
                     break;
                 case "block":
@@ -2162,7 +2140,7 @@ namespace OpenTween
                     break;
 
                 default:
-                    MyCommon.TraceOut("Unknown Event:" + evt.Event + Environment.NewLine + content);
+                    MyCommon.TraceOut("Unknown Event:" + evt.Event + Environment.NewLine + message.Json);
                     break;
             }
             this.StoredEvent.Insert(0, evt);
@@ -2171,72 +2149,63 @@ namespace OpenTween
         }
 
         private void userStream_Started()
-        {
-            this.UserStreamStarted?.Invoke(this, EventArgs.Empty);
-        }
+            => this.UserStreamStarted?.Invoke(this, EventArgs.Empty);
 
         private void userStream_Stopped()
-        {
-            this.UserStreamStopped?.Invoke(this, EventArgs.Empty);
-        }
+            => this.UserStreamStopped?.Invoke(this, EventArgs.Empty);
 
         public bool UserStreamActive
-            => this.userStream != null && this.userStream.IsStreamActive;
+            => this.userStreamConnector != null && this.userStreamConnector.IsStreamActive;
 
         public void StartUserStream()
         {
-            var newStream = new TwitterUserstream(this.Api);
+            var replies = this.AllAtReply ? "all" : null;
+            var streamObservable = this.Api.UserStreams(replies, this.TrackWord);
+            var newConnector = new StreamAutoConnector(streamObservable);
 
-            newStream.StatusArrived += userStream_StatusArrived;
-            newStream.Started += userStream_Started;
-            newStream.Stopped += userStream_Stopped;
+            newConnector.MessageReceived += userStream_MessageReceived;
+            newConnector.Started += userStream_Started;
+            newConnector.Stopped += userStream_Stopped;
 
-            newStream.Start(this.AllAtReply, this.TrackWord);
+            newConnector.Start();
 
-            var oldStream = Interlocked.Exchange(ref this.userStream, newStream);
-            oldStream?.Dispose();
+            var oldConnector = Interlocked.Exchange(ref this.userStreamConnector, newConnector);
+            oldConnector?.Dispose();
         }
 
         public void StopUserStream()
         {
-            var oldStream = Interlocked.Exchange(ref this.userStream, null);
-            oldStream?.Dispose();
+            var oldConnector = Interlocked.Exchange(ref this.userStreamConnector, null);
+            oldConnector?.Dispose();
         }
 
         public void ReconnectUserStream()
         {
-            if (this.userStream != null)
+            if (this.userStreamConnector != null)
             {
                 this.StartUserStream();
             }
         }
 
-        private class TwitterUserstream : IDisposable
+        private class StreamAutoConnector : IDisposable
         {
-            public bool AllAtReplies { get; private set; }
-            public string TrackWords { get; private set; }
+            private readonly TwitterStreamObservable streamObservable;
 
             public bool IsStreamActive { get; private set; }
+            public bool IsDisposed { get; private set; }
 
-            public event Action<string> StatusArrived;
+            public event Action<ITwitterStreamMessage> MessageReceived;
             public event Action Stopped;
             public event Action Started;
 
-            private TwitterApi twitterApi;
-
             private Task streamTask;
-            private CancellationTokenSource streamCts;
+            private CancellationTokenSource streamCts = new CancellationTokenSource();
 
-            public TwitterUserstream(TwitterApi twitterApi)
+            public StreamAutoConnector(TwitterStreamObservable streamObservable)
+                => this.streamObservable = streamObservable;
+
+            public void Start()
             {
-                this.twitterApi = twitterApi;
-            }
-
-            public void Start(bool allAtReplies, string trackwords)
-            {
-                this.AllAtReplies = allAtReplies;
-                this.TrackWords = trackwords;
-
                 var cts = new CancellationTokenSource();
 
                 this.streamCts = cts;
@@ -2244,7 +2213,7 @@ namespace OpenTween
                 {
                     try
                     {
-                        await this.UserStreamLoop(cts.Token)
+                        await this.StreamLoop(cts.Token)
                             .ConfigureAwait(false);
                     }
                     catch (OperationCanceledException) { }
@@ -2260,10 +2229,10 @@ namespace OpenTween
                 this.Stopped?.Invoke();
             }
 
-            private async Task UserStreamLoop(CancellationToken cancellationToken)
+            private async Task StreamLoop(CancellationToken cancellationToken)
             {
                 TimeSpan sleep = TimeSpan.Zero;
-                for (;;)
+                for (; ; )
                 {
                     if (sleep != TimeSpan.Zero)
                     {
@@ -2283,25 +2252,17 @@ namespace OpenTween
 
                     try
                     {
-                        var replies = this.AllAtReplies ? "all" : null;
-
-                        using (var stream = await this.twitterApi.UserStreams(replies, this.TrackWords)
-                            .ConfigureAwait(false))
-                        using (var reader = new StreamReader(stream))
-                        {
-                            while (!reader.EndOfStream)
-                            {
-                                var line = await reader.ReadLineAsync()
-                                    .ConfigureAwait(false);
-
-                                cancellationToken.ThrowIfCancellationRequested();
-
-                                this.StatusArrived?.Invoke(line);
-                            }
-                        }
+                        await this.streamObservable.ForEachAsync(
+                            x => this.MessageReceived?.Invoke(x),
+                            cancellationToken);
 
                         // キャンセルされていないのにストリームが終了した場合
                         sleep = TimeSpan.FromSeconds(30);
+                    }
+                    catch (TwitterApiException ex) when (ex.StatusCode == HttpStatusCode.Gone)
+                    {
+                        // UserStreams停止によるエラーの場合は長めに間隔を開ける
+                        sleep = TimeSpan.FromMinutes(10);
                     }
                     catch (TwitterApiException) { sleep = TimeSpan.FromSeconds(30); }
                     catch (IOException) { sleep = TimeSpan.FromSeconds(30); }
@@ -2326,20 +2287,18 @@ namespace OpenTween
                 }
             }
 
-            private bool disposed = false;
-
             public void Dispose()
             {
-                if (this.disposed)
+                if (this.IsDisposed)
                     return;
 
-                this.disposed = true;
+                this.IsDisposed = true;
 
                 this.Stop();
 
                 this.Started = null;
                 this.Stopped = null;
-                this.StatusArrived = null;
+                this.MessageReceived = null;
             }
         }
 #endregion
@@ -2382,9 +2341,7 @@ namespace OpenTween
         public long StatusId { get; }
 
         public PostDeletedEventArgs(long statusId)
-        {
-            this.StatusId = statusId;
-        }
+            => this.StatusId = statusId;
     }
 
     public class UserStreamEventReceivedEventArgs : EventArgs
@@ -2392,8 +2349,6 @@ namespace OpenTween
         public Twitter.FormattedEvent EventData { get; }
 
         public UserStreamEventReceivedEventArgs(Twitter.FormattedEvent eventData)
-        {
-            this.EventData = eventData;
-        }
+            => this.EventData = eventData;
     }
 }

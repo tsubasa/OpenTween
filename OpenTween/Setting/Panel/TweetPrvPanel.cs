@@ -38,9 +38,7 @@ namespace OpenTween.Setting.Panel
     public partial class TweetPrvPanel : SettingPanelBase
     {
         public TweetPrvPanel()
-        {
-            InitializeComponent();
-        }
+            => this.InitializeComponent();
 
         public void LoadConfig(SettingCommon settingCommon)
         {
@@ -72,7 +70,7 @@ namespace OpenTween.Setting.Panel
             var dateTimeFormat = settingCommon.DateTimeFormat;
             try
             {
-                if (DateTime.Now.ToString(dateTimeFormat).Length == 0)
+                if (DateTimeUtc.Now.ToLocalTimeString(dateTimeFormat).Length == 0)
                 {
                     // このブロックは絶対に実行されないはず
                     // 変換が成功した場合にLengthが0にならない
@@ -126,7 +124,7 @@ namespace OpenTween.Setting.Panel
         {
             try
             {
-                LabelDateTimeFormatApplied.Text = DateTime.Now.ToString(CmbDateTimeFormat.Text);
+                LabelDateTimeFormatApplied.Text = DateTimeUtc.Now.ToLocalTimeString(CmbDateTimeFormat.Text);
             }
             catch (FormatException)
             {
@@ -137,14 +135,10 @@ namespace OpenTween.Setting.Panel
         }
 
         private void CmbDateTimeFormat_TextUpdate(object sender, EventArgs e)
-        {
-            CreateDateTimeFormatSample();
-        }
+            => this.CreateDateTimeFormatSample();
 
         private void CmbDateTimeFormat_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            CreateDateTimeFormatSample();
-        }
+            => this.CreateDateTimeFormatSample();
 
         private void CmbDateTimeFormat_Validating(object sender, CancelEventArgs e)
         {
@@ -156,8 +150,6 @@ namespace OpenTween.Setting.Panel
         }
 
         private void LabelDateTimeFormatApplied_VisibleChanged(object sender, EventArgs e)
-        {
-            CreateDateTimeFormatSample();
-        }
+            => this.CreateDateTimeFormatSample();
     }
 }

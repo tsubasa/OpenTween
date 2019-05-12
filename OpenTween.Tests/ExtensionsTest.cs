@@ -19,11 +19,13 @@
 // the Free Software Foundation, Inc., 51 Franklin Street - Fifth Floor,
 // Boston, MA 02110-1301, USA.
 
+using Moq;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -49,11 +51,154 @@ namespace OpenTween
             Assert.Equal(expected, thisCulture.Contains(thatCulture));
         }
 
+        [Fact]
         public void Contains_InvariantCultureTest()
         {
             // InvariantCulture は全てのカルチャを内包する
             Assert.True(CultureInfo.InvariantCulture.Contains(new CultureInfo("ja")));
             Assert.True(CultureInfo.InvariantCulture.Contains(CultureInfo.InvariantCulture));
+        }
+
+        [Theory]
+        [InlineData("abc", new int[] { 'a', 'b', 'c' })]
+        [InlineData("🍣", new int[] { 0x1f363 })] // サロゲートペア
+        public void ToCodepoints_Test(string s, int[] expected)
+            => Assert.Equal(expected, s.ToCodepoints());
+
+        [Theory]
+        // char.ConvertToUtf32 をそのまま使用するとエラーになるパターン
+        [InlineData(new[] { '\ud83c' }, new[] { 0xd83c })] // 壊れたサロゲートペア (LowSurrogate が無い)
+        [InlineData(new[] { '\udf63' }, new[] { 0xdf63 })] // 壊れたサロゲートペア (HighSurrogate が無い)
+        public void ToCodepoints_BrokenSurrogateTest(char[] s, int[] expected)
+        {
+            // InlineDataAttribute で壊れたサロゲートペアの string を扱えないため char[] を使う
+            Assert.Equal(expected, new string(s).ToCodepoints());
+        }
+
+        [Fact]
+        public void ToCodepoints_ErrorTest()
+            => Assert.Throws<ArgumentNullException>(() => ((string)null).ToCodepoints());
+
+        [Theory]
+        [InlineData("", 0, 0, 0)]
+        [InlineData("sushi 🍣", 0, 8, 7)]
+        [InlineData("sushi 🍣", 0, 5, 5)]
+        [InlineData("sushi 🍣", 6, 8, 1)]
+        [InlineData("sushi 🍣", 6, 7, 1)] // サロゲートペアの境界を跨ぐ範囲 (LowSurrogate が無い)
+        [InlineData("sushi 🍣", 7, 8, 1)] // サロゲートペアの境界を跨ぐ範囲 (HighSurrogate が無い)
+        public void GetCodepointCount_Test(string str, int start, int end, int expected)
+            => Assert.Equal(expected, str.GetCodepointCount(start, end));
+
+        [Fact]
+        public void GetCodepointCount_ErrorTest()
+        {
+            Assert.Throws<ArgumentNullException>(() => ((string)null).GetCodepointCount(0, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => "abc".GetCodepointCount(-1, 3));
+            Assert.Throws<ArgumentOutOfRangeException>(() => "abc".GetCodepointCount(0, 4));
+            Assert.Throws<ArgumentOutOfRangeException>(() => "abc".GetCodepointCount(4, 5));
+            Assert.Throws<ArgumentOutOfRangeException>(() => "abc".GetCodepointCount(2, 1));
+        }
+
+        [Fact]
+        public async Task ForEachAsync_Test()
+        {
+            var mock = new Mock<IObservable<int>>();
+            mock.Setup(x => x.Subscribe(It.IsNotNull<IObserver<int>>()))
+                .Callback<IObserver<int>>(x =>
+                {
+                    x.OnNext(1);
+                    x.OnNext(2);
+                    x.OnNext(3);
+                    x.OnCompleted();
+                })
+                .Returns(Mock.Of<IDisposable>());
+
+            var results = new List<int>();
+
+            await mock.Object.ForEachAsync(x => results.Add(x));
+
+            Assert.Equal(new[] { 1, 2, 3 }, results);
+        }
+
+        [Fact]
+        public async Task ForEachAsync_EmptyTest()
+        {
+            var mock = new Mock<IObservable<int>>();
+            mock.Setup(x => x.Subscribe(It.IsNotNull<IObserver<int>>()))
+                .Callback<IObserver<int>>(x => x.OnCompleted())
+                .Returns(Mock.Of<IDisposable>());
+
+            var results = new List<int>();
+
+            await mock.Object.ForEachAsync(x => results.Add(x));
+
+            Assert.Empty(results);
+        }
+
+        [Fact]
+        public async Task ForEachAsync_CancelledTest()
+        {
+            var mockUnsubscriber = new Mock<IDisposable>();
+
+            var mockObservable = new Mock<IObservable<int>>();
+            mockObservable.Setup(x => x.Subscribe(It.IsNotNull<IObserver<int>>()))
+                .Callback<IObserver<int>>(x =>
+                {
+                    x.OnNext(1);
+                    x.OnNext(2);
+                    x.OnNext(3);
+                    x.OnCompleted();
+                })
+                .Returns(mockUnsubscriber.Object);
+
+            var cts = new CancellationTokenSource();
+
+            await mockObservable.Object.ForEachAsync(x => cts.Cancel(), cts.Token);
+
+            mockUnsubscriber.Verify(x => x.Dispose(), Times.AtLeastOnce());
+        }
+
+        [Fact]
+        public async Task ForEachAsync_ErrorOccursedAtObservableTest()
+        {
+            var mockObservable = new Mock<IObservable<int>>();
+            mockObservable.Setup(x => x.Subscribe(It.IsNotNull<IObserver<int>>()))
+                .Callback<IObserver<int>>(x =>
+                {
+                    x.OnNext(1);
+                    x.OnError(new Exception());
+                })
+                .Returns(Mock.Of<IDisposable>());
+
+            var results = new List<int>();
+
+            await Assert.ThrowsAsync<Exception>(async () =>
+            {
+                await mockObservable.Object.ForEachAsync(x => results.Add(x));
+            });
+            Assert.Equal(new[] { 1 }, results);
+        }
+
+        [Fact]
+        public async Task ForEachAsync_ErrorOccursedAtSubscriberTest()
+        {
+            var mockUnsubscriber = new Mock<IDisposable>();
+
+            var mockObservable = new Mock<IObservable<int>>();
+            mockObservable.Setup(x => x.Subscribe(It.IsNotNull<IObserver<int>>()))
+                .Callback<IObserver<int>>(x =>
+                {
+                    x.OnNext(1);
+                    x.OnCompleted();
+                })
+                .Returns(mockUnsubscriber.Object);
+
+            await Assert.ThrowsAsync<Exception>(async () =>
+            {
+                await mockObservable.Object.ForEachAsync(x => throw new Exception());
+            });
+
+            mockUnsubscriber.Verify(x => x.Dispose(), Times.AtLeastOnce());
         }
     }
 }

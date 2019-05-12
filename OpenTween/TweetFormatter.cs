@@ -26,6 +26,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using OpenTween.Api.DataModel;
+using OpenTween.Setting;
 
 namespace OpenTween
 {
@@ -75,6 +76,8 @@ namespace OpenTween
                     yield return FormatHashtagEntity(targetText, hashtagEntity);
                 else if (entity is TwitterEntityMention mentionEntity)
                     yield return FormatMentionEntity(targetText, mentionEntity);
+                else if (entity is TwitterEntityEmoji emojiEntity)
+                    yield return FormatEmojiEntity(targetText, emojiEntity);
                 else
                     yield return t(e(targetText));
 
@@ -153,13 +156,17 @@ namespace OpenTween
         }
 
         private static string FormatHashtagEntity(string targetText, TwitterEntityHashtag entity)
-        {
-            return "<a class=\"hashtag\" href=\"https://twitter.com/search?q=%23" + eu(entity.Text) + "\">" + t(e(targetText)) + "</a>";
-        }
+            => "<a class=\"hashtag\" href=\"https://twitter.com/search?q=%23" + eu(entity.Text) + "\">" + t(e(targetText)) + "</a>";
 
         private static string FormatMentionEntity(string targetText, TwitterEntityMention entity)
+            => "<a class=\"mention\" href=\"https://twitter.com/" + eu(entity.ScreenName) + "\">" + t(e(targetText)) + "</a>";
+
+        private static string FormatEmojiEntity(string targetText, TwitterEntityEmoji entity)
         {
-            return "<a class=\"mention\" href=\"https://twitter.com/" + eu(entity.ScreenName) + "\">" + t(e(targetText)) + "</a>";
+            if (!SettingManager.Local.UseTwemoji)
+                return t(e(targetText));
+
+            return "<img class=\"emoji\" src=\"" + e(entity.Url) + "\" alt=\"" + e(entity.Text) + "\" />";
         }
 
         // 長いのでエイリアスとして e(...), eu(...), t(...) でエスケープできるようにする

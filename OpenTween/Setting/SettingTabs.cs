@@ -37,20 +37,13 @@ namespace OpenTween
     {
 #region Settingクラス基本
         public static SettingTabs Load()
-        {
-            SettingTabs setting = LoadSettings("");
-            return setting;
-        }
+            => LoadSettings("");
 
         public void Save()
-        {
-            SaveSettings(this);
-        }
+            => SaveSettings(this);
 
         public SettingTabs()
-        {
-            Tabs = new List<SettingTabItem>();
-        }
+            => this.Tabs = new List<SettingTabItem>();
 #endregion
 
         public List<SettingTabItem> Tabs;
@@ -80,7 +73,7 @@ namespace OpenTween
             /// <summary>
             /// 振り分けルール (<see cref="MyCommon.TabUsageType.UserDefined"/> で使用)
             /// </summary>
-            public PostFilterRule[] FilterArray { get; set; } = new PostFilterRule[0];
+            public PostFilterRule[] FilterArray { get; set; } = Array.Empty<PostFilterRule>();
 
             /// <summary>
             /// 表示するユーザーのスクリーンネーム (<see cref="MyCommon.TabUsageType.UserTimeline"/> で使用)
