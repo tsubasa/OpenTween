@@ -151,7 +151,10 @@ namespace OpenTween.Models
         }
 
         public virtual void EnqueueRemovePost(long statusId, bool setIsDeleted)
-            => this.removeQueue.Enqueue(statusId);
+        {
+            // ツイートを削除しない
+            //this.removeQueue.Enqueue(statusId);
+        }
 
         public virtual bool RemovePostImmediately(long statusId)
         {

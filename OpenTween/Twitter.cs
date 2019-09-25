@@ -868,7 +868,11 @@ namespace OpenTween
                 if (post.IsMe && !read && this.ReadOwnPost) post.IsRead = true;
 
                 if (tab != null && tab.IsInnerStorageTabType)
+                {
                     tab.AddPostQueue(post);
+                    // リストのツイートもメインタブに流す
+                    TabInformations.GetInstance().AddPost(post);
+                }
                 else
                     TabInformations.GetInstance().AddPost(post);
             }

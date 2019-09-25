@@ -184,7 +184,7 @@ namespace OpenTween
             using (ControlTransaction.Update(this.PostBrowser))
             {
                 this.PostBrowser.DocumentText =
-                    this.Owner.createDetailHtml(post.IsDeleted ? "(DELETED)" : post.Text);
+                    this.Owner.createDetailHtml(post.IsDeleted ? "(DELETED)" + post.Text : post.Text);
 
                 this.PostBrowser.Document.Window.ScrollTo(0, 0);
             }

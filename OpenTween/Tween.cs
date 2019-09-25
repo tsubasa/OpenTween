@@ -4983,7 +4983,7 @@ namespace OpenTween
                         if (e.ColumnIndex != 2)
                             text = e.SubItem.Text;
                         else
-                            text = post.IsDeleted ? "(DELETED)" : post.TextSingleLine;
+                            text = post.IsDeleted ? "(DELETED)" + post.TextSingleLine : post.TextSingleLine;
 
                         if (drawLineCount == 1)
                         {
